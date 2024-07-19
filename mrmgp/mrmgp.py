@@ -18,11 +18,12 @@ class MRMGP(object):
     """
     The inference functions are modified from SSM package.
     """
-    def __init__(self, N, K, num_derivatives, x_across, x_within, num_groups, num_times, ydims, init_state_distn=None):
+    def __init__(self, N, K, num_derivative, x_across, x_within, num_groups, num_times, ydims, init_state_distn=None):
         if num_groups != 2:
             warnings.warn("currently only support two brain region case")
             raise NotImplementedError
         
+        num_derivatives = anp.array([num_derivative, num_derivative]) # for across-region and within-region latent variables
         num_dims = anp.ceil(num_derivatives/2).astype(anp.int32)
         D = (num_groups * x_across * num_dims[0] + sum(x_within) * num_dims[1]) * 2
 
