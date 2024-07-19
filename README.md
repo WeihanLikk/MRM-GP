@@ -10,7 +10,7 @@ From the current directory, run
 pip install -r requirements.txt
 ```
 
-Our code is highly dependent on the SSM package. To install SSM, run
+Our code is highly dependent on the [SSM](https://github.com/lindermanlab/ssm) package. To install SSM, run
 ```
 git clone https://github.com/lindermanlab/ssm
 cd ssm
