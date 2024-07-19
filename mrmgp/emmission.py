@@ -171,21 +171,12 @@ class _LinearEmissions(Emissions):
 
         if not anp.all(mask):
             data = interpolate_data(data, mask)
-            # We would like to find the PCA coordinates in the face of missing data
-            # To do so, alternate between running PCA and imputing the missing entries
             for itr in range(25):
                 mu = (data - bias).dot(C_pseudoinv)
                 data[:, ~mask[0]] = (mu.dot(C.T) + bias)[:, ~mask[0]]
 
         # Project data to get the mean
         xhat = (data - bias).dot(C_pseudoinv)
-        # xhat_new = anp.zeros((xhat.shape[0], self.Hs.shape[1]))
-        # for i in range(xhat.shape[1]):
-        #     if i < self.x_across:
-        #         index = i*self.num_dims[0]
-        #     elif self.x_across <= i < self.x_across+self.x_within:
-        #         index = self.x_across*self.num_dims[0] + (i-self.x_across)*self.num_dims[1]
-        #     xhat_new[:, index] = xhat[:, i]
         return xhat
 
     def forward(self, x, input, tag, index=None):
@@ -217,8 +208,6 @@ class _LinearEmissions(Emissions):
         # Run PCA to get a linear embedding of the data with the maximum effective dimension
         pca, xs, ll = pca_with_imputation(min(self.D * Keff, self.N),
                                           resids, masks, num_iters=num_iters)
-        # pca, xs, ll = pca_with_imputation(self.D * Keff,
-        #                                   resids, masks, num_iters=num_iters)
 
         # Assign each state a random projection of these dimensions
         Cs, ds = [], []
@@ -307,13 +296,6 @@ class _CompoundLinearEmissions(Emissions):
             return anp.array([block_diag(*[em.Cs[k] for em in self.emissions_models])
                              for k in range(self.K)])
 
-    # @property
-    # def ds(self):
-    #     if self.single_subspace:
-    #         return anp.array([block_diag(*[em.ds[0] for em in self.emissions_models])])
-    #     else:
-    #         return anp.array([block_diag(*[em.ds[k] for em in self.emissions_models])
-    #                          for k in range(self.K)])
     @property
     def ds(self):
         return anp.concatenate([em.ds for em in self.emissions_models], axis=1)
@@ -360,8 +342,6 @@ class _CompoundLinearEmissions(Emissions):
             for em, xp_r, xp_i, ind in zip(self.emissions_models, anp.split(x_real, Dx_offsets, axis=1), anp.split(x_imag, Dx_offsets, axis=1), index):
                 xp = anp.hstack((xp_r, xp_i))
                 datas.append(em.forward(xp, input, tag, ind))
-        # for em, xp in zip(self.emissions_models, anp.split(x, Dx_offsets, axis=1)):
-        #     datas.append(em.forward(xp, input, tag))
         return anp.concatenate(datas, axis=2)
 
     @ensure_args_are_lists
@@ -400,8 +380,6 @@ class _GaussianEmissionsMixin(object):
             N, K, D, M=M, single_subspace=single_subspace, **kwargs)
         self.inv_etas = -1 + \
             npr.randn(1, N) if single_subspace else npr.randn(K, N)
-        # from scipy.io import loadmat
-        # self.inv_etas = loadmat("inv_etas.mat")["inv_etas"]
 
     @property
     def params(self):
@@ -457,30 +435,12 @@ class GaussianCompoundEmissions(_GaussianEmissionsMixin, _CompoundLinearEmission
         self.inv_etas[:, ...] = anp.log(etas)
         self.emissions_models[0].Cs = C[0][None, :, :]
         self.emissions_models[1].Cs = C[1][None, :, :]
-        # self.emissions_models[0].Cs = anp.concatenate((C[0][None, :, 0:self.x_across], npr.randn(1, self.N_vec[0], self.x_within[0])), axis=2)
-        # self.emissions_models[1].Cs = anp.concatenate((C[1][None, :, 0:self.x_across], npr.randn(1, self.N_vec[1], self.x_within[1])), axis=2)
         self.emissions_models[0].ds = d[None, 0:self.N_vec[0]]
         self.emissions_models[1].ds = d[None, self.N_vec[0]:]
 
-        # pca = self._initialize_with_pca(
-        #     datas, inputs=inputs, masks=masks, tags=tags)
-        # self.inv_etas[:, ...] = anp.log(pca.noise_variance_)
-
-        # from scipy.io import loadmat
-        # R = loadmat("params.mat")["R"]
-        # C = loadmat("params.mat")["C"]
-        # d = loadmat("params.mat")["d"]
-        # self.inv_etas[:, ...] = anp.log(anp.diag(R))
-        # self.emissions_models[0].Cs = C[None, 0:self.N_vec[0], 0:self.D_vec[0]]
-        # self.emissions_models[1].Cs = C[None, self.N_vec[0]:, self.D_vec[0]:]
-        # self.emissions_models[0].ds = d[None, 0:self.N_vec[0], 0]
-        # self.emissions_models[1].ds = d[None, self.N_vec[0]:, 0]
-
     def neg_hessian_log_emissions_prob(self, data, input, mask, tag, x, Ez, index):
         assert self.single_subspace, "Only implemented for a single emission model"
-        # Return (T, D, D) array of blocks for the diagonal of the Hessian
         T, D = data.shape
-        # hess = -1.0 * self.Cs[0].T@anp.diag(1.0 / anp.exp(self.inv_etas[0]))@self.Cs[0]
         new_Cs = self.Cs[0] @ self.Hs
         if index is None:
             hess = -1.0 * \
@@ -506,10 +466,6 @@ class GaussianCompoundEmissions(_GaussianEmissionsMixin, _CompoundLinearEmission
                 Xs[i].append(anp.column_stack([x_i_s, u]))
                 ys[i].append(y_i_s)
 
-        # Xs = [anp.column_stack([x, u]) for x, u in
-        #       zip(continuous_expectations, inputs)]
-        # ys = datas
-        # ws = [Ez for (Ez, _, _) in discrete_expectations]
         inv_etas = []
         for i, (em, n, d) in enumerate(zip(self.emissions_models, self.N_vec, self.D_vec)):
             CF, ds, Sigma = fit_linear_regression(Xs[i], ys[i], prior_ExxT=1e-4 * anp.eye(
@@ -519,15 +475,6 @@ class GaussianCompoundEmissions(_GaussianEmissionsMixin, _CompoundLinearEmission
             em.ds = ds[None, :]
             inv_etas.append(anp.log(anp.diag(Sigma)))
         self.inv_etas = anp.hstack(inv_etas)[None, :]
-        # Return exact m-step updates for C, F, d, and inv_etas
-        # CF, d, Sigma = fit_linear_regression(
-        #     Xs, ys,
-        #     prior_ExxT=1e-4 * anp.eye(self.D + self.M + 1),
-        #     prior_ExyT=anp.zeros((self.D + self.M + 1, self.N)))
-        # self.Cs = CF[None, :, :self.D]
-        # self.Fs = CF[None, :, self.D:]
-        # self.ds = d[None, :]
-        # self.inv_etas = anp.log(anp.diag(Sigma))[None, :]
 
 
 class _PoissonEmissionsMixin(object):
@@ -597,18 +544,6 @@ class PoissonCompoundEmissions(_PoissonEmissionsMixin, _CompoundLinearEmissions)
                  for data, mask in zip(datas, masks)]
         yhats = [self.link(anp.clip(d, .1, anp.inf)) for d in datas]
         self._initialize_with_pca(yhats, inputs=inputs, masks=masks, tags=tags)
-    # def initialize(self, datas, C, Rs, d, inputs=None, masks=None, tags=None):
-    #     datas = [interpolate_data(data, mask)
-    #              for data, mask in zip(datas, masks)]
-
-    #     etas = anp.concatenate((anp.diag(Rs[0]), anp.diag(Rs[1])))
-    #     self.inv_etas[:, ...] = anp.log(etas)
-    #     self.emissions_models[0].Cs = C[0][None, :, :]
-    #     self.emissions_models[1].Cs = C[1][None, :, :]
-    #     # self.emissions_models[0].Cs = anp.concatenate((C[0][None, :, 0:self.x_across], npr.randn(1, self.N_vec[0], self.x_within[0])), axis=2)
-    #     # self.emissions_models[1].Cs = anp.concatenate((C[1][None, :, 0:self.x_across], npr.randn(1, self.N_vec[1], self.x_within[1])), axis=2)
-    #     self.emissions_models[0].ds = d[None, 0:self.N_vec[0]]
-    #     self.emissions_models[1].ds = d[None, self.N_vec[0]:]
 
     def neg_hessian_log_emissions_prob(self, data, input, mask, tag, x, Ez, index):
         """

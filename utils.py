@@ -74,41 +74,10 @@ def square_exp_approximation(sigma, mu, num_taylor):
     p = anp.append([first_value], coeffs[::-1])
     root = myroots(p)
     p_negative = mypoly(root[anp.where(anp.real(root) < 0)])
-    # p_positive = np.poly(root[np.where(root.real > 0)])
     q = anp.sqrt(2*anp.pi/sigma) * factorial(num_taylor) * \
         anp.power(2 * sigma, num_taylor)    
 
     return p_negative, q
-
-
-def square_exp_fitting(sigma, mu, num_taylor):
-
-    fn = factorial(num_taylor)
-    coeff = []
-    for i in range(num_taylor+1):
-        coeff.append(fn * anp.power((2 * sigma), num_taylor-i)
-                     * anp.power(-1, i) / factorial(i))
-    coeff = anp.array(coeff)
-
-    # for 4 dim coeff
-    a0 = anp.sqrt(anp.real(coeff)[0])
-    a3 = anp.sqrt(-anp.real(coeff)[3])
-    poly_coeffs = anp.array([1.0, 0.0, -2*coeff[2], -8.0*anp.power(a3, 2)
-                            * a0, anp.power(coeff[2], 2)+4.0*anp.power(a3, 2)*coeff[1]])
-    roots = anp.roots(poly_coeffs)
-    a2 = anp.real(roots[anp.where(roots.real > 0)])
-    a1 = anp.real(anp.sqrt(2*a0*a2 - coeff[1]))
-    as_coeff = anp.squeeze(anp.vstack((a0, a1, a2, a3)))
-
-    return as_coeff[:-1]
-
-
-def set_zero(x):
-    return anp.clip(x, 0.0, anp.inf)
-
-
-def as_tuple(x):
-    return (x,)
 
 def get_block_idxs(group_dims):
     num_groups = len(group_dims)
@@ -129,7 +98,6 @@ def create_block_mask(group_dims):
     block_mask = block_diag(*blocks)
     return block_mask
 
-
 def mat2blocks(A, block_idx):
     num_blocks = len(block_idx)
     blocks = []
@@ -138,7 +106,6 @@ def mat2blocks(A, block_idx):
         idx = np.array(range(curr_block[0], curr_block[1]))
         blocks.append(A[np.ix_(idx, idx)])
     return blocks
-
 
 def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tolLL=1e-5):
     ydim = np.sum(ydims)
@@ -214,13 +181,6 @@ def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tol
                 max_C = C
                 max_Rs = Rs
 
-    # if len(LL) < maxIters:
-    #     print("LL converged after %d EM iterations.", len(LL))
-    # else:
-    #     print('Fitting stopped after maxIters (%d) was reached.', maxIters)
-    # print("Max pCCA LL: ", max_ll)
-
-    # est_params = {}
     C_across = []
     # ds = []
     for i in range(num_groups):
@@ -244,10 +204,9 @@ def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tol
 def pcca_x(y, T, num_groups, xdim_across, xdim_within, ydims, num_trials, C_across, C_within, Rs, d):
     ydim = np.sum(ydims)
 
-    C = np.concatenate(C_across, axis=0)  # ydim, x_across_dim
+    C = np.concatenate(C_across, axis=0)
 
     y = np.reshape(y, (ydim, T, num_trials), order="F")
-    # y = np.squeeze(np.mean(y, 2))
     x_latents_across = np.zeros((xdim_across, T, num_trials))
     for i in range(num_trials):
         y0 = y[:, :, i] - np.tile(d[:, None], T)
@@ -398,16 +357,6 @@ def inv_cholesky(x):
     L = anp.linalg.cholesky(x)
     inv_L = anp.linalg.inv(L)
     return inv_L.T @ inv_L
-
-
-def eign_decomposition(x):
-    valus, vector = anp.linalg.eig(x)
-    valus = anp.real(valus)
-    vector = anp.real(vector)
-    valus = anp.clip(valus, 0, anp.inf)
-    valus = anp.diag(valus)
-    chol_K = vector @ anp.sqrt(valus)
-    return chol_K
 
 def check_symmetric(a, rtol=1e-05, atol=1e-08):
     return anp.allclose(a, a.T, rtol=rtol, atol=atol)

@@ -1,6 +1,6 @@
 import autograd.numpy as anp
 import autograd.numpy.random as anpr
-from utils import myexpm, square_exp_approximation, block_diag, factorial, complex_approximation, min_max_normalize, inv_cholesky, factorial
+from utils import myexpm, block_diag, complex_approximation
 from autograd.scipy.linalg import solve_sylvester
 import ssm.stats as stats
 from mrmgp.optimizers import adam, bfgs, rmsprop, sgd, lbfgs

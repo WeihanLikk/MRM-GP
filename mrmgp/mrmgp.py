@@ -183,13 +183,11 @@ class MRMGP(object):
             zhist, xhist, yhist = prefix
             pad = len(zhist)
             assert zhist.dtype == int and zhist.min() >= 0 and zhist.max() < K
-            # assert xhist.shape == (pad, D)
             assert yhist.shape == (pad, N)
 
             if not input_z:
                 z = anp.concatenate((zhist, anp.zeros(T, dtype=int)))
             x = anp.concatenate((xhist, anp.zeros((T,) + D)))
-            # input = anp.zeros((T+pad,) + M) if input is None else input
             input = anp.zeros(
                 (T+pad,) + M) if input is None else anp.concatenate((anp.zeros((pad,) + M), input))
             xmask = anp.ones((T+pad,) + D, dtype=bool)
