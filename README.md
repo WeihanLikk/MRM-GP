@@ -1,6 +1,8 @@
-# [ICML 2024] Multi-Region Markovian Gaussian Process: An Efficient Method to Discover Directional Communications Across Multiple Brain Regions 
+## [ICML 2024] Multi-Region Markovian Gaussian Process: An Efficient Method to Discover Directional Communications Across Multiple Brain Regions 
 
-<div align='center' >Weihan Li, Chengrui Li, Yule Wang, and Anqi Wu</div> [paper](https://arxiv.org/abs/2402.02686)
+<div align='center' >Weihan Li, Chengrui Li, Yule Wang, and Anqi Wu</div> 
+
+[[arXiv]](https://arxiv.org/abs/2402.02686)
 
 ## 1 Installation
 From the current directory, run
