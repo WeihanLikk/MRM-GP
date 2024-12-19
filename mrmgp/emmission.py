@@ -417,8 +417,8 @@ class _GaussianEmissionsMixin(object):
         etas = anp.exp(self.inv_etas)
         return mus[anp.arange(T), z, :] + 0.1 * anp.sqrt(etas[z]) * npr.randn(T, self.N)
 
-    def smooth(self, expected_states, variational_mean, data, input=None, mask=None, tag=None):
-        mus = self.forward(variational_mean, input, tag)
+    def smooth(self, expected_states, variational_mean, data, input=None, tag=None, index=None):
+        mus = self.forward(variational_mean, input, tag, index)
         yhat = mus[:, 0, :] if self.single_subspace else anp.sum(
             mus * expected_states[:, :, None], axis=1)
         return yhat

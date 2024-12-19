@@ -138,14 +138,14 @@ class MRMGP(object):
         return viterbi(pi0, Ps, log_likes)
 
     @ensure_slds_args_not_none
-    def smooth(self, variational_mean, data, input=None, mask=None, tag=None):
+    def smooth(self, variational_mean, data, input=None, mask=None, tag=None, index=None):
         """
         Compute the mean observation under the posterior distribution
         of latent discrete states.
         """
         Ez, _, _ = self.expected_states(
             variational_mean, data, input, mask, tag)
-        return self.emissions.smooth(Ez, variational_mean, data, input, tag)
+        return self.emissions.smooth(Ez, variational_mean, data, input, tag, index)
 
     def sample_continuous_states(self, z):
         T = z.shape[0]

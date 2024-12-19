@@ -167,7 +167,7 @@ def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tol
         LLi = T * const + T * ldM - 0.5 * T * np.sum(MM * cY)
         LL.append(LLi)
 
-        C = np.linalg.lstsq(Exx.T, cY_beta.T)[0].T
+        C = np.linalg.lstsq(Exx.T, cY_beta.T,rcond=None)[0].T
 
         R = cY - cY_beta @ C.T
         R = 0.5 * (R + R.T)
