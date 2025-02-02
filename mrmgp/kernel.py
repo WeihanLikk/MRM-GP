@@ -5,6 +5,9 @@ from autograd.scipy.linalg import solve_sylvester
 import ssm.stats as stats
 from mrmgp.optimizers import adam, bfgs, rmsprop, sgd, lbfgs
 
+import torch
+from torch import nn 
+from torch.nn.functional import normalize
 
 class Kernel():
     def __init__(self, K, D, M=0):
@@ -16,34 +19,34 @@ class SpectralKernelDynamics(Kernel):
         super(SpectralKernelDynamics, self).__init__(K, D, M)
         # kernel parameters
         self.Rq = 2
-        self.sigma_across = 0.05 * anp.ones((K, x_across)).astype(dtype)
-        self.constant_across = anpr.uniform(
-            0.5, 2.0, (K, x_across, 2, self.Rq)).astype(dtype)
+        self.sigma_across = 0.05 * torch.ones((K, x_across), dtype=dtype)
+        self.constant_across = (torch.rand((K, x_across, 2, self.Rq), dtype=dtype) * 1.5) + 0.5
         self.sigma_within = []
         self.constant_within = []
         self.mus_within = []
         for i in range(num_groups):
-            self.sigma_within.append(0.05 * anp.ones((1, x_within[i])).astype(dtype))
-            self.constant_within.append(anpr.uniform(0.5, 2.0, (1, x_within[i], self.Rq)).astype(dtype))
-            self.mus_within.append(0.5 * anp.ones((1, x_within[i])).astype(dtype))
+            self.sigma_within.append(0.05 * torch.ones((1, x_within[i]), dtype=dtype))
+            self.constant_within.append((torch.rand((1, x_within[i], self.Rq), dtype=dtype) * 1.5) + 0.5)
+            self.mus_within.append(0.5 * torch.ones((1, x_within[i]), dtype=dtype))
 
-        self.delays = 0.0 * anp.ones((K, x_across)).astype(dtype)
-        self.mus = 0.5 * anp.ones((K, x_across)).astype(dtype)
-        self.constant = anp.array([[1.0, 1.2], [1.2, 1.0]]) # or any random postive number
-        self.I = anp.eye(num_groups)
+
+        self.delays = 0.0 * torch.ones((K, x_across), dtype=dtype)
+        self.mus = 0.5 * torch.ones((K, x_across), dtype=dtype)
+        self.constant = torch.tensor([[1.0, 1.2], [1.2, 1.0]])
+        self.I = torch.eye(num_groups)
         self.num_derivatives = num_derivatives
         self.num_dims = num_dims
-        self.coeff_indexes_across = anp.arange(0, num_derivatives[0], 2)
-        self.coeff_indexes_within = anp.arange(0, num_derivatives[1], 2)
-        self.tvec = anp.linspace(0, num_times, num_times)
+        self.coeff_indexes_across = torch.arange(0, num_derivatives[0], 2)
+        self.coeff_indexes_within = torch.arange(0, num_derivatives[1], 2)
+        self.tvec = torch.linspace(0, num_times, num_times)
         
-        self.Lt_across = anp.zeros((self.num_dims[0], 1))
-        self.Lt_across[-1, 0] = 1
-        self.Lt_across_zero = anp.zeros((self.num_dims[0], self.num_dims[0]))
-        self.Lt_within = anp.zeros((self.num_dims[1], 1))
-        self.Lt_within[-1, 0] = 1
-        self.Lt_within_zero = anp.zeros((self.num_dims[1], self.num_dims[1]))
-        self.blank = anp.zeros((self.num_dims[1], self.num_dims[1]))
+        self.Lt_across = torch.zeros((self.num_dims[0], 1))
+        self.Lt_across[-1, 0] = 1.0  
+        self.Lt_across_zero = torch.zeros((self.num_dims[0], self.num_dims[0]))
+        self.Lt_within = torch.zeros((self.num_dims[1], 1))
+        self.Lt_within[-1, 0] = 1.0 
+        self.Lt_within_zero = torch.zeros((self.num_dims[1], self.num_dims[1]))
+        self.blank = torch.zeros((self.num_dims[1], self.num_dims[1]))
 
         # AR parameters
         assert lags > 0
@@ -54,15 +57,13 @@ class SpectralKernelDynamics(Kernel):
         self.x_within = x_within
         self.num_groups = num_groups
 
-        self.mu_init = anp.zeros((K, D))
-        self.Vs = anp.zeros((K, D, M))
-        self.bs = anp.zeros((K, D))
-        Ft0 = anp.eye(self.num_dims[1]-1)
-        self.Ft0_within = anp.concatenate(
-            (anp.zeros((self.num_dims[1]-1, 1)), Ft0), axis=1).astype(anp.complex128)
-
+        self.mu_init = torch.zeros((K, D))
+        self.Vs = torch.zeros((K, D, M))
+        self.bs = torch.zeros((K, D))
+        Ft0 = torch.eye(self.num_dims[1] - 1)
+        self.Ft0_within = torch.cat((torch.zeros((self.num_dims[1] - 1, 1)), Ft0), dim=1).to(torch.complex128)
         # create mask matrix to extract across-region latent variables
-        self.valid_across_mat = anp.zeros((self.D, 2*num_groups*x_across))
+        self.valid_across_mat = torch.zeros((self.D, 2 * num_groups * x_across))
         count_across = 0
         for i in range(2*(num_groups*x_across+sum(x_within))):
             if i >= x_across and i < x_across + x_within[0]:
