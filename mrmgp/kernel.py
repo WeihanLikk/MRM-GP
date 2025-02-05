@@ -84,11 +84,10 @@ class SpectralKernelDynamics(Kernel):
 
     @params.setter
     def params(self, value):
-        self.delays, mus, sigma_across, mus_within, sigma_within = value
-        self.sigma_across = anp.exp(sigma_across)
-        self.sigma_within = anp.exp(sigma_within)
-        self.mus = anp.exp(mus)
-        self.mus_within = anp.exp(mus_within)
+        self.sigma_across = torch.exp(self.sigma_across)
+        self.sigma_within = torch.exp(self.sigma_within)
+        self.mus = torch.exp(self.mus)
+        self.mus_within = torch.exp(self.mus_within)
 
     @property
     def Sigmas_init(self):
@@ -99,15 +98,12 @@ class SpectralKernelDynamics(Kernel):
         return self.Qs
 
     def params_bounds(self):
-        delay_bound = [(-10, 10)] * len(self.delays.flatten())
-        mu_bound = [(anp.log(1e-4), anp.log(5))] * len(self.mus.flatten())
-        mus_within_bound = [(anp.log(1e-4), anp.log(5))] * (
-            len(self.mus_within[0].flatten()) + len(self.mus_within[1].flatten()))
-        sigma_across_bound = [(anp.log(1e-4), anp.log(5.0))] * \
-            len(self.sigma_across.flatten())
-        sigma_within_bound = [(anp.log(1e-4), anp.log(5.0))] * (
-            len(self.sigma_within[0].flatten()) + len(self.sigma_within[1].flatten()))
+        mu_bound = [(torch.log(torch.tensor(1e-4)), torch.log(torch.tensor(5.0)))] * len(self.mus.flatten())  # Use torch.tensor for the bounds
+        mus_within_bound = [(torch.log(torch.tensor(1e-4)), torch.log(torch.tensor(5.0)))] * (len(self.mus_within[0].flatten()) + len(self.mus_within[1].flatten()))
+        sigma_across_bound = [(torch.log(torch.tensor(1e-4)), torch.log(torch.tensor(5.0)))] * len(self.sigma_across.flatten())
+        sigma_within_bound = [(torch.log(torch.tensor(1e-4)), torch.log(torch.tensor(5.0)))] * (len(self.sigma_within[0].flatten()) + len(self.sigma_within[1].flatten()))
         return delay_bound + mu_bound + sigma_across_bound + mus_within_bound + sigma_within_bound
+
 
     def initialize(self):
         self.As, self.Qs, self.inv_QrQis = self.update_params(self.params)
@@ -116,40 +112,47 @@ class SpectralKernelDynamics(Kernel):
         return 0
 
     def kernel_cc(self, mu, delay, sigma, constant):
-        a11 = 0
-        a12 = 0
-        a21 = 0
-        a22 = 0
+        a11 = torch.tensor(0.0)  # Initialize as tensors
+        a12 = torch.tensor(0.0)
+        a21 = torch.tensor(0.0)
+        a22 = torch.tensor(0.0)
 
-        for i in range(self.Rq):
-            a11 = a11 + anp.square(constant[0, i])
+
+        for i in range(constant.shape[1]):
+            a11 = a11 + torch.square(constant[0, i])
             a12 = a12 + constant[0, i] * constant[1, i]
             a21 = a21 + constant[0, i] * constant[1, i]
-            a22 = a22 + anp.square(constant[1, i])
+            a22 = a22 + torch.square(constant[1, i])
 
-        kcc = anp.array(
-            [[a11, a12*anp.exp(-1j*0.0)*anp.conj(anp.exp(-1j*mu*delay))],
-             [a21*anp.exp(-1j*mu*delay)*anp.conj(anp.exp(-1j*0.0)), a22]]
-        )
+        exp1 = torch.polar(torch.ones_like(mu), -mu * delay) 
+        exp2 = torch.polar(torch.ones_like(mu), torch.zeros_like(mu))
+
+        kcc = torch.tensor(
+            [[a11, a12 * exp2 * torch.conj(exp1)],
+            [a21 * exp1 * torch.conj(exp2), a22]]
+        ).to(torch.complex128)
+
         return kcc
 
     def compute_across(self, params):
-        delay, mu, sigma_across = params
-        sigma = anp.exp(sigma_across)
-        mu = anp.exp(mu)
+        sigma = torch.exp(sigma_across)
+        mu = torch.exp(mu)
         constant = self.constant
         dt = 1.0
-        coeff, q, _ = complex_approximation(sigma, mu, int(self.num_derivatives[1]/2))
+
+        coeff, q, _ = complex_approximation(sigma, mu, int(self.num_derivatives[1] / 2))
         coeff = coeff[1:][::-1]
-        F = anp.concatenate((self.Ft0_within, -1.0*coeff[None, :]))
-        LQcL = (self.Lt_across * q) @ self.Lt_across.T
-        Pinf = solve_sylvester(F, anp.conj(F).T, -1.0*LQcL)
+
+        F = torch.cat((self.Ft0_within, -1.0 * coeff[None, :]), dim=1)  
+
+        LQcL = (self.Lt_across * q) @ self.Lt_across.T 
+        Pinf = torch.tensor(solve_sylvester(F.cpu().numpy(), np.conj(F.cpu().numpy()).T, -1.0 * LQcL.cpu().numpy()), dtype=torch.complex128, device=self.Lt_across.device) 
 
         kcc = self.kernel_cc(mu, delay, sigma, constant)
 
-        At = myexpm(dt * F)
-        Qt = Pinf - At @ Pinf @ (anp.conj(At).T)
-        Qs = anp.kron(kcc, Qt)
+        At = torch.matrix_exp(dt * F)
+        Qt = Pinf - At @ Pinf @ torch.conj(At.T)
+        Qs = torch.kron(kcc, Qt)
 
         return At, Qs
 
