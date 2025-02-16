@@ -5,7 +5,9 @@ from ssm.messages import hmm_expected_states, hmm_sample, kalman_info_sample, ka
 from ssm.util import ensure_variational_args_are_lists, trace_product
 from autograd.scipy.special import logsumexp
 from warnings import warn
-
+import torch
+from torch import nn 
+from torch.nn.functional import normalize
 """
 These functions are modified from SSM package.
 """
@@ -121,12 +123,12 @@ class SLDSMeanFieldVariationalPosterior(VariationalPosterior):
         T = data.shape[0]
         q_mu = self.model.emissions.invert(
             data, input=input, mask=mask, tag=tag)
-        q_sigma_inv = np.log(self.initial_variance) * np.ones((T, self.D))
+        q_sigma_inv = torch.log(self.initial_variance) * torch.ones((T, self.D))
         return q_mu, q_sigma_inv
 
     def sample(self):
-        return [q_mu + np.sqrt(np.exp(q_sigma_inv)) * npr.randn(*q_mu.shape)
-                for (q_mu, q_sigma_inv) in self.params]
+        return [q_mu + torch.sqrt(torch.exp(q_sigma_inv)) * torch.randn_like(q_mu)
+            for (q_mu, q_sigma_inv) in self.params]
 
     def log_density(self, sample):
         assert isinstance(sample, list) and len(sample) == len(self.datas)
@@ -134,9 +136,10 @@ class SLDSMeanFieldVariationalPosterior(VariationalPosterior):
         logq = 0
         for s, (q_mu, q_sigma_inv) in zip(sample, self.params):
             assert s.shape == q_mu.shape
-            q_sigma = np.exp(q_sigma_inv)
-            logq += np.sum(-0.5 * np.log(2 * np.pi * q_sigma))
-            logq += np.sum(-0.5 * (s - q_mu)**2 / q_sigma)
+            q_sigma = torch.exp(q_sigma_inv)
+            logq += torch.sum(-0.5 * torch.log(2 * torch.pi * q_sigma))
+            logq += torch.sum(-0.5 * (s - q_mu)**2 / q_sigma)
+
 
         return logq
 
@@ -198,11 +201,10 @@ class SLDSTriDiagVariationalPosterior(VariationalPosterior):
         # NOTE: it's important to initialize A and Q to be nonzero,
         # otherwise the gradients wrt them are zero and they never
         # change during optimization!
-        As = np.repeat(np.eye(D)[None, :, :], T-1, axis=0)
-        bs = np.zeros((T-1, D))
-        Qi_sqrts = np.repeat(np.eye(D)[None, :, :], T-1, axis=0)
-        Ri_sqrts = 1./np.sqrt(self.initial_variance) * \
-            np.repeat(np.eye(D)[None, :, :], T, axis=0)
+        As = torch.eye(D).unsqueeze(0).repeat(T-1, 1, 1)
+        bs = torch.zeros(T-1, D)
+        Qi_sqrts = torch.eye(D).unsqueeze(0).repeat(T-1, 1, 1)
+        Ri_sqrts = (1. / torch.sqrt(self.initial_variance)) * torch.eye(D).unsqueeze(0).repeat(T, 1, 1)
         return As, bs, Qi_sqrts, ms, Ri_sqrts
 
     def sample(self):
@@ -381,9 +383,9 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         K = self.K
 
         # Initialize q(z) parameters: pi0, log_likes, transition_matrices
-        pi0 = np.ones(K) / K
-        Ps = np.ones((T-1, K, K)) / K
-        log_likes = np.zeros((T, K))
+        pi0 = torch.ones(K) / K
+        Ps = torch.ones((T-1, K, K)) / K
+        log_likes = torch.zeros((T, K))
         return dict(pi0=pi0, Ps=Ps, log_likes=log_likes)
 
     def _initialize_continuous_state_params_random(self, data, input, mask, tag):
@@ -391,14 +393,14 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         D = self.D
 
         # Initialize the linear terms
-        h_ini = np.zeros(D)
-        h_dyn_1 = np.zeros((T - 1, D))
-        h_dyn_2 = np.zeros((T - 1, D))
+        h_ini = torch.zeros(D)
+        h_dyn_1 = torch.zeros((T - 1, D))
+        h_dyn_2 = torch.zeros((T - 1, D))
         try:
             xhat = (1.0 / self.initial_variance) * \
                 self.model.emissions.invert(
                     data, input=input, mask=mask, tag=tag)
-            xhat_new = np.zeros((xhat.shape[0], int(D/2)))
+            xhat_new = torch.zeros((xhat.shape[0], int(D/2)))
             for i in range(xhat.shape[1]):
                 if i < self.x_across:
                     index = i*self.num_dims[0]
@@ -412,22 +414,22 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
                     index = self.num_groups*self.x_across*self.num_dims[0]+self.x_within[0]*self.num_dims[1] + (
                         i-self.num_groups*self.x_across-self.x_within[0])*self.num_dims[1]
                 xhat_new[:, index] = xhat[:, i]
-            h_obs = np.hstack((xhat_new, xhat_new))
+            h_obs = torch.hstack((xhat_new, xhat_new))
 
         except:
             warn("We can only initialize the continuous states if the emissions support "
                  "\"inverting\" the observations by mapping them to an estimate of the "
                  "latent states. Defaulting to a random initialization instead.")
             h_obs = (1.0 / self.initial_variance) * \
-                np.random.randn(data.shape[0], self.D)
+                torch.randn(data.shape[0], self.D)
 
         # Initialize the posterior variance to self.initial_variance * I
-        J_ini = np.zeros((D, D))
-        J_dyn_11 = np.zeros((T - 1, D, D))
-        J_dyn_21 = np.zeros((T - 1, D, D))
-        J_dyn_22 = np.zeros((T - 1, D, D))
-        J_obs = np.tile(1 / self.initial_variance *
-                        np.eye(D)[None, :, :], (T, 1, 1))
+        J_ini = torch.zeros((D, D))
+        J_dyn_11 = torch.zeros((T - 1, D, D))
+        J_dyn_21 = torch.zeros((T - 1, D, D))
+        J_dyn_22 = torch.zeros((T - 1, D, D))
+        J_obs = torch.tile(1 / self.initial_variance *
+                        torch.eye(D)[None, :, :], (T, 1, 1))
 
         return dict(J_ini=J_ini,
                     h_ini=h_ini,
@@ -444,14 +446,14 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         D = self.D
 
         # Initialize the linear terms
-        h_ini = np.zeros(D)
-        h_dyn_1 = np.zeros((T - 1, D))
-        h_dyn_2 = np.zeros((T - 1, D))
+        h_ini = torch.zeros(D)
+        h_dyn_1 = torch.zeros((T - 1, D))
+        h_dyn_2 = torch.zeros((T - 1, D))
 
         # Set the posterior mean based on the emission model, if possible.
         try:
             xhat = (1.0 / self.initial_variance) * x
-            xhat_new = np.zeros((xhat.shape[0], int(D/2)))
+            xhat_new = torch.zeros((xhat.shape[0], int(D/2)))
             for i in range(xhat.shape[1]):
                 if i < self.x_across:
                     index = i*self.num_dims[0]
@@ -465,21 +467,20 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
                     index = self.num_groups*self.x_across*self.num_dims[0]+self.x_within[0]*self.num_dims[1] + (
                         i-self.num_groups*self.x_across-self.x_within[0])*self.num_dims[1]
                 xhat_new[:, index] = xhat[:, i]
-            h_obs = np.hstack((xhat_new, xhat_new))
+            h_obs = torch.hstack((xhat_new, xhat_new))
         except:
             warn("We can only initialize the continuous states if the emissions support "
                  "\"inverting\" the observations by mapping them to an estimate of the "
                  "latent states. Defaulting to a random initialization instead.")
             h_obs = (1.0 / self.initial_variance) * \
-                np.random.randn(data.shape[0], self.D)
+                torch.randn(data.shape[0], self.D)
 
         # Initialize the posterior variance to self.initial_variance * I
-        J_ini = np.zeros((D, D))
-        J_dyn_11 = np.zeros((T - 1, D, D))
-        J_dyn_21 = np.zeros((T - 1, D, D))
-        J_dyn_22 = np.zeros((T - 1, D, D))
-        J_obs = np.tile(1 / self.initial_variance *
-                        np.eye(D)[None, :, :], (T, 1, 1))
+        J_ini = torch.zeros((D, D))
+        J_dyn_11 = torch.zeros((T - 1, D, D))
+        J_dyn_21 = torch.zeros((T - 1, D, D))
+        J_dyn_22 = torch.zeros((T - 1, D, D))
+        J_obs = (1 / self.initial_variance * torch.eye(D)).unsqueeze(0).repeat(T, 1, 1)
 
         return dict(J_ini=J_ini,
                     h_ini=h_ini,
@@ -553,12 +554,12 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         for prms, (Ez, Ezzp1, normalizer) in \
                 zip(self.discrete_state_params, discrete_expectations):
 
-            log_pi0 = np.log(prms["pi0"] + 1e-16)
-            log_Ps = np.log(prms["Ps"] + 1e-16)
+            log_pi0 = torch.log(prms["pi0"] + 1e-16)
+            log_Ps = torch.log(prms["Ps"] + 1e-16)
             negentropy -= normalizer  # -log Z
-            negentropy += np.sum(Ez[0] * log_pi0)  # initial factor
-            negentropy += np.sum(Ez * prms["log_likes"])  # unitary factors
-            negentropy += np.sum(Ezzp1 * log_Ps)  # pairwise factors
+            negentropy += torch.sum(Ez[0] * log_pi0)  # initial factor
+            negentropy += torch.sum(Ez * prms["log_likes"])  # unitary factors
+            negentropy += torch.sum(Ezzp1 * log_Ps)  # pairwise factors
         return -negentropy
 
     def _continuous_entropy(self):
@@ -569,23 +570,23 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
 
             # Kalman smoother outputs the smoothed covariance matrices. Add
             # back the mean to get E[x_t x_{t+1}^T]
-            mumuT = np.swapaxes(Ex[:, None], 2, 1) @ Ex[:, None]
+            mumuT = torch.swapaxes(Ex.unsqueeze(1), 2, 1) @ Ex.unsqueeze(1)
             ExxT = smoothed_sigmas + mumuT
 
             # Pairwise terms
-            negentropy += np.sum(-0.5 * trace_product(prms["J_ini"], ExxT[0]))
-            negentropy += np.sum(-0.5 *
+            negentropy += torch.sum(-0.5 * trace_product(prms["J_ini"], ExxT[0]))
+            negentropy += torch.sum(-0.5 *
                                  trace_product(prms["J_dyn_11"], ExxT[:-1]))
-            negentropy += np.sum(-0.5 *
+            negentropy += torch.sum(-0.5 *
                                  trace_product(prms["J_dyn_22"], ExxT[1:]))
-            negentropy += np.sum(-0.5 * trace_product(prms["J_obs"], ExxT))
-            negentropy += np.sum(-1.0 * trace_product(prms["J_dyn_21"], ExxnT))
+            negentropy += torch.sum(-0.5 * trace_product(prms["J_obs"], ExxT))
+            negentropy += torch.sum(-1.0 * trace_product(prms["J_dyn_21"], ExxnT))
 
             # Unary terms
-            negentropy += np.sum(prms["h_ini"] * Ex[0])
-            negentropy += np.sum(prms["h_dyn_1"] * Ex[:-1])
-            negentropy += np.sum(prms["h_dyn_2"] * Ex[1:])
-            negentropy += np.sum(prms["h_obs"] * Ex)
+            negentropy += torch.sum(prms["h_ini"] * Ex[0])
+            negentropy += torch.sum(prms["h_dyn_1"] * Ex[:-1])
+            negentropy += torch.sum(prms["h_dyn_2"] * Ex[1:])
+            negentropy += torch.sum(prms["h_obs"] * Ex)
 
             # Log normalizer
             negentropy -= log_Z
