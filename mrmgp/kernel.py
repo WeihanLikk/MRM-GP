@@ -80,7 +80,7 @@ class SpectralKernelDynamics(Kernel):
 
     @property
     def params(self):
-        return self.delays, anp.log(self.mus), anp.log(self.sigma_across), anp.log(self.mus_within), anp.log(self.sigma_within)
+        return self.delays, torch.log(self.mus), torch.log(self.sigma_across), torch.log(self.mus_within), torch.log(self.sigma_within)
 
     @params.setter
     def params(self, value):
@@ -158,17 +158,19 @@ class SpectralKernelDynamics(Kernel):
 
     def compute_within(self, params):
         mus_within, sigma_within = params
-        sigma = anp.exp(sigma_within)
-        mu = anp.exp(mus_within)
-        coeff, q, _ = complex_approximation(sigma, mu, int(self.num_derivatives[1]/2))
-        coeff = coeff[1:][::-1]
-        dt = 1.0
-        LQcL = (self.Lt_within * q) @ self.Lt_within.T
-        F = anp.concatenate((self.Ft0_within, -1.0*coeff[None, :]))
-        Pinf = solve_sylvester(F, anp.conj(F).T, -1.0*LQcL)
-        At = myexpm(dt * F)
-        Qt = Pinf - At @ Pinf @ (anp.conj(At).T)
+        sigma = torch.exp(sigma_within)
+        mu = torch.exp(mus_within)
+        coeff, q, _ = complex_approximation(sigma, mu, int(self.num_derivatives[1] / 2))
 
+        coeff = coeff[1:].flip(0)
+        dt = 1.0
+        LQcL = (self.Lt_within @ q) @ self.Lt_within.T
+        F = torch.cat((self.Ft0_within, -1.0 * coeff[None, :]), dim=0)
+        
+        Pinf = solve_sylvester(F, torch.conj(F).T, -1.0 * LQcL)
+        At = myexpm(dt * F)
+        Qt = Pinf - At @ Pinf @ torch.conj(At).T
+        
         return At, Qt
 
     def update_params(self, params, *args):
@@ -233,27 +235,26 @@ class SpectralKernelDynamics(Kernel):
             new_LQcL12_real = block_diag(*LQcLs_part12_real)
             new_LQcL21_real = block_diag(*LQcLs_part21_real)
             new_LQcL22_real = block_diag(*LQcLs_part22_real)
-            Qs = anp.vstack([anp.hstack([new_LQcL11_real, new_LQcL12_real]), anp.hstack([new_LQcL21_real, new_LQcL22_real])])
+            Qs = torch.vstack([torch.hstack([new_LQcL11_real, new_LQcL12_real]), torch.hstack([new_LQcL21_real, new_LQcL22_real])])
 
-            Qr = anp.real(Qs)
-            Qi = anp.imag(Qs)
-            Ar = anp.real(As)
-            Ai = anp.imag(As)
-            inv_Qr = anp.linalg.inv(Qr)
-            inv_term_11 = anp.linalg.inv(Qr + Qi @ inv_Qr @ Qi)
+            Qr = torch.real(Qs)
+            Qi = torch.imag(Qs)
+            Ar = torch.real(As)
+            Ai = torch.imag(As)
+            inv_Qr = torch.linalg.inv(Qr)
+            inv_term_11 = torch.linalg.inv(Qr + Qi @ inv_Qr @ Qi)
             inv_term_12 = inv_Qr @ Qi @ inv_term_11
 
-            new_Q = anp.vstack([anp.hstack([Qr, -Qi]), anp.hstack([Qi, Qr])])
-            new_A = anp.vstack([anp.hstack([Ar, -Ai]), anp.hstack([Ai, Ar])])
+            new_Q = torch.vstack([torch.hstack([Qr, -Qi]), torch.hstack([Qi, Qr])])
+            new_A = torch.vstack([torch.hstack([Ar, -Ai]), torch.hstack([Ai, Ar])])
 
-            inv_newQ = anp.vstack(
-                [anp.hstack([inv_term_11, inv_term_12]), anp.hstack([-inv_term_12, inv_term_11])])
+            inv_newQ = torch.vstack([torch.hstack([inv_term_11, inv_term_12]), torch.hstack([-inv_term_12, inv_term_11])])
 
             new_As.append(new_A)
             new_Qs.append(new_Q)
             inv_QrQis.append(inv_newQ)
 
-        return anp.array(new_As), anp.array(new_Qs), anp.array(inv_QrQis)
+        return torch.stack(new_As), torch.stack(new_Qs), torch.stack(inv_QrQis)
 
     def sample_x(self, z, xhist, input=None, tag=None, with_noise=True):
         """
@@ -262,17 +263,16 @@ class SpectralKernelDynamics(Kernel):
         D, As, bs, Vs = self.D, self.As, self.bs, self.Vs
         if xhist.shape[0] < self.lags:
             # Sample from the initial distribution
-            S = anp.linalg.cholesky(self.Sigmas_init[z]) if with_noise else 0
-            return self.mu_init[z] + anp.dot(S, anpr.randn(D))
+            S = torch.linalg.cholesky(self.Sigmas_init[z]) if with_noise else 0
+            return self.mu_init[z] + torch.matmul(S, torch.randn(D))
         else:
             # Sample from the autoregressive distribution
-            mu = (Vs[z].dot(input[:self.M]) + bs[z]).astype(anp.complex128)
+            mu = (Vs[z] @ input[:self.M] + bs[z]).to(torch.complex128)
             for l in range(self.lags):
                 Al = As[z][:, l*D:(l+1)*D]
-
-                mu += Al.dot(xhist[-l-1])
-            S = anp.linalg.cholesky(self.Sigmas[z]) if with_noise else 0
-            return mu + anp.dot(S, anpr.randn(D))
+                mu += Al @ xhist[-l-1]
+            S = torch.linalg.cholesky(self.Sigmas[z]) if with_noise else 0
+            return mu + torch.matmul(S, torch.randn(D))
 
     def _compute_mus(self, data, input, mask, tag):
         """
@@ -284,48 +284,37 @@ class SpectralKernelDynamics(Kernel):
 
         mus = []
         for k, (A, b, V, mu0) in enumerate(zip(As, bs, Vs, mu0s)):
-            # Initial condition
-            mus_k_init = mu0 * anp.ones((self.lags, D))
-            # Subsequent means are determined by the AR process
-            mus_k_ar = anp.dot(input[self.lags:, :M], V.T)
+            mus_k_init = mu0 * torch.ones((self.lags, D))
+            mus_k_ar = input[self.lags:, :M] @ V.T
             for l in range(self.lags):
                 Al = A[:, l*D:(l + 1)*D]
-                mus_k_ar = mus_k_ar + anp.dot(data[self.lags-l-1:-l-1], Al.T)
-
+                mus_k_ar = mus_k_ar + data[self.lags-l-1:-l-1] @ Al.T
             mus_k_ar = mus_k_ar + b
-
-            # Append concatenated mean
-            mus.append(anp.vstack((mus_k_init, mus_k_ar)))
-
-        return anp.array(mus)
+            mus.append(torch.vstack((mus_k_init, mus_k_ar)))
+        return torch.stack(mus)
 
     def neg_hessian_expected_log_dynamics_prob(self, Ez, data, input, mask, tag=None):
         """
         Modified from SSM package.
         """
-        assert anp.all(mask), "Cannot compute negative Hessian of autoregressive obsevations with missing data."
+        assert torch.all(mask), "Cannot compute negative Hessian of autoregressive observations with missing data."
         assert self.lags == 1, "Does not compute negative Hessian of autoregressive observations with lags > 1"
 
         inv_new_Qs = self.inv_QrQis
-        J_ini = anp.sum(Ez[0, :, None, None] * inv_new_Qs, axis=0)
+        J_ini = torch.sum(Ez[0, :, None, None] * inv_new_Qs, axis=0)
 
-        dynamics_terms = anp.array(
-            [A.T@inv_Sigma@A for A, inv_Sigma in zip(self.As, inv_new_Qs)])  # A^T Qinv A terms
-        J_dyn_11 = anp.sum(Ez[1:, :, None, None] *
-                           dynamics_terms[None, :], axis=1)
+        dynamics_terms = torch.stack([A.T @ inv_Sigma @ A for A, inv_Sigma in zip(self.As, inv_new_Qs)])
+        J_dyn_11 = torch.sum(Ez[1:, :, None, None] * dynamics_terms[None, :], axis=1)
 
-        J_dyn_22 = anp.sum(Ez[1:, :, None, None] * inv_new_Qs[None, :], axis=1)
+        J_dyn_22 = torch.sum(Ez[1:, :, None, None] * inv_new_Qs[None, :], axis=1)
 
-        off_diag_terms = anp.array(
-            [inv_Sigma@A for A, inv_Sigma in zip(self.As, inv_new_Qs)])
-        J_dyn_21 = -1 * anp.sum(Ez[1:, :, None, None]
-                                * off_diag_terms[None, :], axis=1)
+        off_diag_terms = torch.stack([inv_Sigma @ A for A, inv_Sigma in zip(self.As, inv_new_Qs)])
+        J_dyn_21 = -1 * torch.sum(Ez[1:, :, None, None] * off_diag_terms[None, :], axis=1)
 
         return J_ini, J_dyn_11, J_dyn_21, J_dyn_22
 
     def log_likelihoods(self, data, input, mask, tag, across_only=False):
-        assert anp.all(
-            mask), "Cannot compute likelihood of autoregressive obsevations with missing data."
+        assert torch.all(mask), "Cannot compute likelihood of autoregressive observations with missing data."
         L = self.lags
         mus = self._compute_mus(data, input, mask, tag)
         if across_only:
@@ -339,15 +328,13 @@ class SpectralKernelDynamics(Kernel):
             data_valid = data
             mus_valid = mus
 
-        # Compute the likelihood of the initial data and remainder separately
-        ll_init = anp.column_stack([stats.multivariate_normal_logpdf(data_valid[:L], mu[:L], Sigma)
-                                   for mu, Sigma in zip(mus_valid, Sigmas_init_valid)])
+        ll_init = torch.stack([multivariate_normal_logpdf(data_valid[:L], mu[:L], Sigma)
+                            for mu, Sigma in zip(mus_valid, Sigmas_init_valid)], dim=1)
 
-        ll_ar = anp.column_stack([stats.multivariate_normal_logpdf(data_valid[L:], mu[L:], Sigma)
-                                 for mu, Sigma in zip(mus_valid, Sigmas_valid)])
+        ll_ar = torch.stack([multivariate_normal_logpdf(data_valid[L:], mu[L:], Sigma)
+                            for mu, Sigma in zip(mus_valid, Sigmas_valid)], dim=1)
 
-        # Compute the likelihood of the initial data and remainder separately
-        return anp.row_stack((ll_init, ll_ar))
+        return torch.cat((ll_init, ll_ar), dim=0)
 
     def m_step(self, expectations, datas, inputs, masks, tags, optimizer="lbfgs", **kwargs):
         optimizer = dict(adam=adam, bfgs=bfgs, lbfgs=lbfgs,
@@ -360,7 +347,7 @@ class SpectralKernelDynamics(Kernel):
                     in zip(datas, inputs, masks, tags, expectations):
                 lls = self.log_likelihoods(
                     data, input, mask, tag)
-                elbo += anp.sum(expected_states * lls)
+                elbo += torch.sum(expected_states * lls)
 
             return elbo
 
