@@ -20,4 +20,4 @@ pip install -e .
 
 ## 2 Tutorial
 
-`demo.ipynb` is a step-by-step tutorial that learns an MRMGP from a demo dataset.
+`demo.ipynb` and `demo_r2.ipynb` are two step-by-step tutorials that learn an MRMGP from a demo dataset and evaluate via log-likelihood on held-out neurons and R square on predictions.
