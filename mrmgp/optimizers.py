@@ -16,6 +16,8 @@ from autograd.wrap_util import wraps
 from scipy.optimize import minimize
 from ssm.primitives import solve_symm_block_tridiag
 
+from torch import nn 
+from torch.nn.functional import normalize
 """
 These functions are modified from SSM package.
 """
@@ -55,7 +57,7 @@ def unflatten_optimizer_step(step):
 @unflatten_optimizer_step
 def sgd_step(value_and_grad, x, itr, state=None, step_size=0.1, mass=0.9):
     # Stochastic gradient descent with momentum.
-    velocity = state if state is not None else np.zeros(len(x))
+    velocity = state if state is not None else torch.zeros(len(x))
     val, g = value_and_grad(x, itr)
     velocity = mass * velocity - (1.0 - mass) * g
     x = x + step_size * velocity
@@ -65,10 +67,10 @@ def sgd_step(value_and_grad, x, itr, state=None, step_size=0.1, mass=0.9):
 @unflatten_optimizer_step
 def rmsprop_step(value_and_grad, x, itr, state=None, step_size=0.1, gamma=0.9, eps=10**-8):
     # Root mean squared prop: See Adagrad paper for details.
-    avg_sq_grad = np.ones(len(x)) if state is None else state
+    avg_sq_grad = torch.ones(len(x)) if state is None else state
     val, g = value_and_grad(x, itr)
     avg_sq_grad = avg_sq_grad * gamma + g**2 * (1 - gamma)
-    x = x - (step_size * g) / (np.sqrt(avg_sq_grad) + eps)
+    x = x - (step_size * g) / (torch.sqrt(avg_sq_grad) + eps)
     return x, val, g, avg_sq_grad
 
 
@@ -78,13 +80,13 @@ def adam_step(value_and_grad, x, itr, state=None, step_size=0.001, b1=0.9, b2=0.
     Adam as described in http://arxiv.org/pdf/1412.6980.pdf.
     It's basically RMSprop with momentum and some correction terms.
     """
-    m, v = (np.zeros(len(x)), np.zeros(len(x))) if state is None else state
+    m, v = (torch.zeros(len(x)), torch.zeros(len(x))) if state is None else state
     val, g = value_and_grad(x, itr)
     m = (1 - b1) * g + b1 * m    # First  moment estimate.
     v = (1 - b2) * (g**2) + b2 * v    # Second moment estimate.
     mhat = m / (1 - b1**(itr + 1))    # Bias correction.
     vhat = v / (1 - b2**(itr + 1))
-    x = x - (step_size * mhat) / (np.sqrt(vhat) + eps)
+    x = x - (step_size * mhat) / (torch.sqrt(vhat) + eps)
     return x, val, g, (m, v)
 
 
@@ -135,7 +137,7 @@ def _generic_minimize(method, loss, x0,
     # Wrap the gradient to avoid NaNs
     def safe_grad(x, *itr):
         g = grad(_objective)(x, *itr)
-        g[~np.isfinite(g)] = 1e8
+        g = torch.where(torch.isfinite(g), g, torch.tensor(1e8, dtype=g.dtype, device=g.device))
         return g
 
     # Call the optimizer.  Pass in -1 as the iteration since it is unused. args=(-1,),
@@ -182,7 +184,7 @@ def newtons_method_block_tridiag_hessian(
         H_diag, H_lower_diag = hess_func(x)
         g = grad_func(x)
         dx = -1.0 * solve_symm_block_tridiag(H_diag, H_lower_diag, g)
-        lambdasq = np.dot(g.ravel(), -1.0*dx.ravel())
+        lambdasq = torch.dot(g.view(-1), (-1.0 * dx).view(-1))
         if lambdasq / 2.0 <= tolerance:
             is_converged = True
             break
@@ -194,7 +196,7 @@ def newtons_method_block_tridiag_hessian(
 
     if not is_converged:
         warn("Newton's method failed to converge in {} iterations. "
-             "Final mean abs(dx): {}".format(maxiter, np.mean(np.abs(dx))))
+             "Final mean abs(dx): {}".format(maxiter, torch.mean(torch.abs(dx))))
 
     return x
 
@@ -214,13 +216,13 @@ def backtracking_line_search(x0, dx, obj, g, stepsize=1.0, min_stepsize=1e-8,
 
     # criterion: stop when f(x + stepsize * dx) < f(x) + \alpha * stepsize * f'(x)^T dx
     f_term = obj(x)
-    grad_term = alpha * np.dot(g.ravel(), dx.ravel())
+    grad_term = alpha * torch.dot(g.view(-1), dx.view(-1))
 
     # decrease stepsize until criterion is met
     # or stop at minimum step size
     while stepsize > min_stepsize:
         fx = obj(x + stepsize*dx)
-        if np.isnan(fx) or fx > f_term + grad_term*stepsize:
+        if torch.isnan(fx) or fx > f_term + grad_term*stepsize:
             stepsize *= beta
         else:
             break
