@@ -72,8 +72,8 @@ class Emissions(object):
             self.log_likelihoods(
                 datat[None, :], inputt[None, :], maskt[None, :], tag, xt[None, :])[0, 0]
         hess = hessian(obj)
-        terms = anp.array([anp.squeeze(hess(xt, datat, inputt, maskt))
-                          for xt, datat, inputt, maskt in zip(x, data, input, mask)])
+        terms = torch.stack([torch.squeeze(hess(xt, datat, inputt, maskt))
+                     for xt, datat, inputt, maskt in zip(x, data, input, mask)])
         return -1 * terms
 
     def m_step(self, discrete_expectations, continuous_expectations,
@@ -94,7 +94,7 @@ class Emissions(object):
             obj += self.log_prior()
             for data, input, mask, tag, x, (Ez, _, _) in \
                     zip(datas, inputs, masks, tags, continuous_expectations, discrete_expectations):
-                obj += anp.sum(Ez * self.log_likelihoods(data,
+                obj += torch.sum(Ez * self.log_likelihoods(data,
                                input, mask, tag, x))
             return -obj / T
 
@@ -122,8 +122,8 @@ class _LinearEmissions(Emissions):
         # changed in subclasses.
         self._Cs = npr.randn(
             1, N, D) if single_subspace else npr.randn(K, N, D)
-        self.Fs = npr.randn(1, N, M) if single_subspace else npr.randn(K, N, M)
-        self.ds = npr.randn(1, N) if single_subspace else npr.randn(K, N)
+        self.Fs = torch.randn(1, N, M) if single_subspace else torch.randn(K, N, M)
+        self.ds = torch.randn(1, N) if single_subspace else torch.randn(K, N)
         self.Hs = Hs
         self.x_across = x_across
         self.x_within = x_within
@@ -161,22 +161,22 @@ class _LinearEmissions(Emissions):
         xhat = (C^T C)^{-1} C^T (y-d)
         """
         # Invert with the average emission parameters
-        C = anp.mean(self.Cs, axis=0)
-        F = anp.mean(self.Fs, axis=0)
-        d = anp.mean(self.ds, axis=0)
-        C_pseudoinv = anp.linalg.solve(C.T.dot(C), C.T).T
+        C = torch.mean(self.Cs, axis=0)
+        F = torch.mean(self.Fs, axis=0)
+        d = torch.mean(self.ds, axis=0)
+        C_pseudoinv = torch.linalg.solve(C.T @ C, C.T).T
 
         # Account for the bias
-        bias = input.dot(F.T) + d
+        bias = input @ F.T + d
 
-        if not anp.all(mask):
+        if not torch.all(mask):
             data = interpolate_data(data, mask)
             for itr in range(25):
-                mu = (data - bias).dot(C_pseudoinv)
-                data[:, ~mask[0]] = (mu.dot(C.T) + bias)[:, ~mask[0]]
+                mu = (data - bias) @ C_pseudoinv
+                data[:, ~mask[0]] = (mu @ C.T + bias)[:, ~mask[0]]
 
         # Project data to get the mean
-        xhat = (data - bias).dot(C_pseudoinv)
+        xhat = (data - bias) @ C_pseudoinv
         return xhat
 
     def forward(self, x, input, tag, index=None):
