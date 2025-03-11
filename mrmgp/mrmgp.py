@@ -23,8 +23,8 @@ class MRMGP(object):
             warnings.warn("currently only support two brain region case")
             raise NotImplementedError
         
-        num_derivatives = anp.array([num_derivative, num_derivative]) # for across-region and within-region latent variables
-        num_dims = anp.ceil(num_derivatives/2).astype(anp.int32)
+        num_derivatives = torch.tensor([num_derivative, num_derivative]) # for across-region and within-region latent variables
+        num_dims = torch.ceil(num_derivatives / 2).to(torch.int32)
         D = (num_groups * x_across * num_dims[0] + sum(x_within) * num_dims[1]) * 2
 
         self.ydims = ydims
@@ -55,6 +55,8 @@ class MRMGP(object):
         self.dynamics = dynamics
         self.emissions = emissions
 
+
+
     @ensure_args_are_lists
     def initialize(self, datas, inputs=None, masks=None, tags=None,
                    num_init_restarts=1,
@@ -62,10 +64,10 @@ class MRMGP(object):
                    verbose=0):
         
         # run PCCA to initialize the across latent variables
-        y = anp.zeros((datas[0].shape[1], datas[0].shape[0], len(datas)))
+        y = torch.zeros((datas[0].shape[1], datas[0].shape[0], len(datas)))
         for i in range(len(datas)):
             y[:, :, i] = datas[i].T
-        y = anp.reshape(y, (y.shape[0], y.shape[1] * y.shape[2]), order="F")
+        y = torch.reshape(y, (y.shape[0], y.shape[1] * y.shape[2]), order="F")
 
         C_across, C_within, d, Rs = em_pcca(
             y, self.num_times, self.num_groups, self.x_across, self.x_within, self.ydims)
@@ -75,7 +77,7 @@ class MRMGP(object):
         C = []
         for i in range(len(C_across)):
             if self.x_within[0] != 0:
-                C.append(anp.concatenate(
+                C.append(torch.cat(
                     (C_across[i], C_within[i]), axis=1))
             else:
                 C.append(C_across[i])
@@ -83,11 +85,11 @@ class MRMGP(object):
         xs = [x[:, :, i].T for i in range(len(datas))]
         xs_across = [x_acorss[:, :, i].T for i in range(len(datas))]
 
-        xmasks = [anp.ones_like(x, dtype=bool) for x in xs_across]
+        xmasks = [torch.ones_like(x, dtype=torch.bool) for x in xs_across]
 
         pbar = ssm_pbar(num_init_restarts, verbose, "ARHMM Initialization restarts", [''])
 
-        best_lp = -anp.inf
+        best_lp = -torch.inf
         num_dims = xs_across[0].shape[1]
         if num_dims != 0:
             for i in pbar:
@@ -121,7 +123,7 @@ class MRMGP(object):
     @ensure_slds_args_not_none
     def expected_states(self, variational_mean, data, input=None, mask=None, tag=None):
         pi0 = self.init_state_distn.initial_state_distn
-        x_mask = anp.ones_like(variational_mean, dtype=bool)
+        x_mask = torch.ones_like(variational_mean, dtype=bool)
         Ps = self.transitions.transition_matrices(
             variational_mean, input, x_mask, tag)
         log_likes = self.dynamics.log_likelihoods(
@@ -134,7 +136,7 @@ class MRMGP(object):
         Ps = self.transitions.transition_matrices(
             variational_mean, input, mask, tag)
         log_likes = self.dynamics.log_likelihoods(
-            variational_mean, input, anp.ones_like(variational_mean, dtype=bool), tag, across_only=True)
+            variational_mean, input, torch.ones_like(variational_mean, dtype=bool), tag, across_only=True)
         return viterbi(pi0, Ps, log_likes)
 
     @ensure_slds_args_not_none
@@ -149,11 +151,10 @@ class MRMGP(object):
 
     def sample_continuous_states(self, z):
         T = z.shape[0]
-        x = anp.zeros((T, self.D))
-        inputs = anp.zeros((T, ))
+        x = torc.zeros((T, self.D))
+        inputs = torch.zeros((T, ))
         for t in range(T):
-            x[t, :] = anp.real(self.dynamics.sample_x(
-                int(z[t, 0]-1), x[:t], input=inputs, tag=None, with_noise=True))
+            x[t, :] = torch.real(self.dynamics.sample_x(int(z[t, 0] - 1), x[:t], input=inputs, tag=None, with_noise=True))
         return x
 
     def sample(self, T, input=None, tag=None, prefix=None, with_noise=True, input_z=False):
@@ -167,16 +168,16 @@ class MRMGP(object):
         # If prefix is given, pad the output with it
         if prefix is None:
             pad = 1
-            z = anp.zeros(T+1, dtype=int)
-            x = anp.zeros((T+1, self.D), dtype=anp.complex128)
+            z = torch.zeros(T+1, dtype=int)
+            x = torch.zeros((T+1, self.D), dtype=torch.complex128)
             # input = anp.zeros((T+1,) + M) if input is None else input
-            input = anp.zeros(
-                (T+1,) + M) if input is None else anp.concatenate((anp.zeros((1,) + M), input))
-            xmask = anp.ones((T+1,) + D, dtype=bool)
+            input = torch.zeros(
+                (T+1,) + M) if input is None else torch.cat((torch.zeros((1,) + M), input))
+            xmask = torch.ones((T+1,) + D, dtype=bool)
 
             # Sample the first state from the initial distribution
             pi0 = self.init_state_distn.initial_state_distn
-            z[0] = anpr.choice(self.K, p=pi0)
+            z[0] = torch.multinomial(torch.tensor(pi0, dtype=torch.float32), 1).item()
             x[0] = self.dynamics.sample_x2(
                 z[0], x[:0], tag=tag, with_noise=with_noise)
 
@@ -187,23 +188,23 @@ class MRMGP(object):
             assert yhist.shape == (pad, N)
 
             if not input_z:
-                z = anp.concatenate((zhist, anp.zeros(T, dtype=int)))
-            x = anp.concatenate((xhist, anp.zeros((T,) + D)))
-            input = anp.zeros(
-                (T+pad,) + M) if input is None else anp.concatenate((anp.zeros((pad,) + M), input))
-            xmask = anp.ones((T+pad,) + D, dtype=bool)
+                z = torch.cat((zhist, torch.zeros(T, dtype=int)))
+            x = torch.cat((xhist, torch.zeros((T,) + D)))
+            input = torch.zeros(
+                (T+pad,) + M) if input is None else torch.cat((torch.zeros((pad,) + M), input))
+            xmask = torch.ones((T+pad,) + D, dtype=bool)
 
         # Sample z and x
         input_z = True
         first_z = z[0]
-        z = anp.zeros(T+1, dtype=int)
+        z = torch.zeros(T+1, dtype=int)
         z[0:int(T/2)] = first_z
         z[int(T/2):] = K - first_z - 1
         for t in range(pad, T+pad):
-            Pt = anp.exp(self.transitions.log_transition_matrices(
+            Pt = torch.exp(self.transitions.log_transition_matrices(
                 None, input[t-1:t+1], mask=xmask[t-1:t+1], tag=tag))[0]
             if not input_z:
-                z[t] = anpr.choice(self.K, p=Pt[z[t-1]])
+                z[t] = torch.multinomial(torch.tensor(Pt[z[t-1]], dtype=torch.float32), 1).item()
             x[t] = self.dynamics.sample_x2(
                 z[t], x[:t], input=input[t], tag=tag, with_noise=with_noise)
     
@@ -385,7 +386,7 @@ class MRMGP(object):
                     x0, lambda x: _objective(x, None), _grad_obj, _hess_obj,
                     tolerance=continuous_tolerance, maxiter=continuous_maxiter)
 
-            elif continuous_optimizer == "lbfgs":
+            elif continuous_optimizer == "lbfgs": # dont fix
                 x = lbfgs(_objective, x0, num_iters=continuous_maxiter, args=(),
                           tol=continuous_tolerance)
 
@@ -425,7 +426,7 @@ class MRMGP(object):
         continuous_samples = posterior.sample_continuous_states()
         discrete_expectations = posterior.discrete_expectations
 
-        xmasks = [anp.ones_like(x, dtype=bool) for x in continuous_samples]
+        xmasks = [torch.ones_like(x, dtype=torch.bool) for x in continuous_samples]
         if self.K > 1:
             for distn in [self.init_state_distn, self.transitions]:
                 curr_prms = copy.deepcopy(distn.params)
