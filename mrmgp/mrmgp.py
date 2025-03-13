@@ -233,7 +233,7 @@ class MRMGP(object):
             for x, (Ez, Ezzp1, _), data, input, mask, tag in \
                     zip(continuous_samples, discrete_expectations, datas, inputs, masks, tags):
                 # The "mask" for x is all ones
-                x_mask = anp.ones_like(x, dtype=bool)
+                x_mask = torch.ones_like(x, dtype=bool)
                 log_pi0 = self.init_state_distn.log_initial_state_distn
                 log_Ps = self.transitions.log_transition_matrices(
                     x, input, x_mask, tag)
@@ -244,9 +244,9 @@ class MRMGP(object):
                         data, input, mask, tag, x, index)
 
                 # Compute the expected log probability
-                exp_log_joint += anp.sum(Ez[0] * log_pi0)
-                exp_log_joint += anp.sum(Ezzp1 * log_Ps)
-                exp_log_joint += anp.sum(Ez * log_likes)
+                exp_log_joint += torch.sum(Ez[0] * log_pi0)
+                exp_log_joint += torch.sum(Ezzp1 * log_Ps)
+                exp_log_joint += torch.sum(Ez * log_likes)
 
         return exp_log_joint / n_samples + posterior.entropy()
 
@@ -260,22 +260,22 @@ class MRMGP(object):
         discrete_state_params = []
         for x_samples, data, input, mask, tag in zip(x_sampless, datas, inputs, masks, tags):
             # Make a mask for the continuous states
-            x_mask = anp.ones_like(x_samples[0], dtype=bool)
+            x_mask = torch.ones_like(x_samples[0], dtype=bool)
 
             # Compute expected log initial distribution, transition matrices, and likelihoods
-            pi0 = anp.mean(
+            pi0 = torch.mean(
                 [self.init_state_distn.initial_state_distn
                  for x in x_samples], axis=0)
-            Ps = anp.mean(
+            Ps = torch.mean(
                 [self.transitions.transition_matrices(x, input, x_mask, tag)
                  for x in x_samples], axis=0)
 
-            log_likes = anp.mean(
+            log_likes = torch.mean(
                 [self.dynamics.log_likelihoods(x, input, x_mask, tag, across_only=True)
                  for x in x_samples], axis=0)
             
             if not self.emissions.single_subspace:
-                log_likes = log_likes + anp.mean(
+                log_likes = log_likes + torch.mean(
                     [self.emissions.log_likelihoods(data, input, mask, tag, x)
                      for x in x_samples], axis=0)
 
@@ -288,7 +288,7 @@ class MRMGP(object):
             posterior.inferred_discrete_state_params = discrete_state_params
 
     def expected_log_joint(self, data, input, mask, tag, x, Ez, Ezzp1, scale, index):
-        x_mask = anp.ones_like(x, dtype=bool)
+        x_mask = torch.ones_like(x, dtype=bool)
         log_pi0 = self.init_state_distn.log_initial_state_distn
         log_Ps = self.transitions.log_transition_matrices(
             x, input, x_mask, tag)
@@ -297,11 +297,11 @@ class MRMGP(object):
             self.emissions.log_likelihoods(data, input, mask, tag, x, index)
 
         # Compute the expected log probability
-        elp = anp.sum(Ez[0] * log_pi0)
-        elp += anp.sum(Ezzp1 * log_Ps)
-        elp += anp.sum(Ez * log_likes)
+        elp = torch.sum(Ez[0] * log_pi0)
+        elp += torch.sum(Ezzp1 * log_Ps)
+        elp += torch.sum(Ez * log_likes)
         # elp += dynamics_log_like
-        assert anp.all(anp.isfinite(elp))
+        assert torch.isfinite(elp).all()
         return -1 * elp / scale
 
     def hessian_params_to_hs(self, x,
@@ -313,8 +313,8 @@ class MRMGP(object):
         h_ini = J_ini @ x[0]
 
         h_dyn_1 = (J_dyn_11 @ x[:-1][:, :, None])[:, :, 0]
-        h_dyn_1 += (anp.swapaxes(J_dyn_21, -1, -2)
-                    @ x[1:][:, :, None])[:, :, 0]
+        h_dyn_1 += (torch.transpose(J_dyn_21, -1, -2) @ x[1:].unsqueeze(-1)).squeeze(-1)
+
 
         h_dyn_2 = (J_dyn_22 @ x[1:][:, :, None])[:, :, 0]
         h_dyn_2 += (J_dyn_21 @ x[:-1][:, :, None])[:, :, 0]
@@ -323,8 +323,8 @@ class MRMGP(object):
         return h_ini, h_dyn_1, h_dyn_2, h_obs
 
     def hessian_params(self, data, input, mask, tag, x, Ez, Ezzp1, index=None):
-        T, D = anp.shape(x)
-        x_mask = anp.ones((T, D), dtype=bool)
+        T, D = x.shape
+        x_mask = torch.ones((T, D), dtype=torch.bool)
         J_transitions = self.transitions.neg_hessian_expected_log_trans_prob(
             x, input, x_mask, tag, Ezzp1)
 
@@ -343,7 +343,7 @@ class MRMGP(object):
         J_ini, J_dyn_11, J_dyn_21, J_dyn_22, J_obs = self.hessian_params(
             data, input, mask, tag, x, Ez, Ezzp1, index)
 
-        hessian_diag = anp.zeros_like(J_obs)
+        hessian_diag = torch.zeros_like(J_obs)
         hessian_diag[:] += J_obs
         hessian_diag[0] += J_ini
         hessian_diag[:-1] += J_dyn_11
@@ -395,7 +395,7 @@ class MRMGP(object):
                     "Invalid continuous_optimizer: {}".format(continuous_optimizer))
 
             # Evaluate the Hessian at the mode
-            assert anp.all(anp.isfinite(_objective(x, -1)))
+            assert torch.isfinite(_objective(x, -1)).all()
 
             J_ini, J_dyn_11, J_dyn_21, J_dyn_22, J_obs = self.hessian_params(
                 data, input, mask, tag, x, Ez, Ezzp1, index)
@@ -458,11 +458,10 @@ class MRMGP(object):
 
         posterior = self.posterior
 
-        y = anp.zeros((datas[0].shape[1], datas[0].shape[0], len(datas)))
+        y = torch.zeros((datas[0].shape[1], datas[0].shape[0], len(datas)))
         for i in range(len(datas)):
             y[:, :, i] = datas[i].T
-        y = anp.reshape(
-            y, (y.shape[0], y.shape[1] * y.shape[2]), order="F")
+        y = y.permute(2, 0, 1).reshape(y.shape[0], y.shape[1] * y.shape[2])
 
         ydims = []
         for i in range(self.num_groups):
@@ -490,7 +489,7 @@ class MRMGP(object):
         elbos.append(self.laplace_em_elbo(
             posterior, datas, inputs, masks, tags, index=index))
 
-        return anp.array(elbos), posterior
+        return torch.tensor(elbos), posterior
 
     @ensure_args_are_lists
     def set_posterior(self, datas, inputs=None, masks=None, tags=None,
@@ -555,4 +554,4 @@ class MRMGP(object):
             if verbose == 2:
                 pbar.set_description("ELBO: {:.1f}".format(elbos[-1]))
 
-        return anp.array(elbos), posterior
+        return torch.tensor(elbos), posterior

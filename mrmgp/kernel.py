@@ -2,7 +2,6 @@ import autograd.numpy as anp
 import autograd.numpy.random as anpr
 from utils import myexpm, block_diag, complex_approximation
 from autograd.scipy.linalg import solve_sylvester
-import ssm.stats as stats
 from mrmgp.optimizers import adam, bfgs, rmsprop, sgd, lbfgs
 
 import torch
@@ -15,7 +14,7 @@ class Kernel():
 
 
 class SpectralKernelDynamics(Kernel):
-    def __init__(self, K, D, x_across, x_within, num_groups, num_derivatives, num_dims, num_times, M=0, lags=1, dtype=anp.float64):
+    def __init__(self, K, D, x_across, x_within, num_groups, num_derivatives, num_dims, num_times, M=0, lags=1, dtype=torch.float64):
         super(SpectralKernelDynamics, self).__init__(K, D, M)
         # kernel parameters
         self.Rq = 2
