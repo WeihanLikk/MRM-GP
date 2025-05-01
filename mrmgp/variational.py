@@ -261,8 +261,7 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
                  inputs=None, masks=None, tags=None,
                  initial_variance=0.01):
 
-        super(SLDSStructuredMeanFieldVariationalPosterior, self).\
-            __init__(model, datas, inputs, masks, tags)
+        super(SLDSStructuredMeanFieldVariationalPosterior, self).__init__(model, datas, inputs, masks, tags)
 
         # Initialize the parameters
         self.D = model.D
@@ -272,8 +271,17 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         self.num_dims = model.num_dims
         self.num_groups = model.num_groups
 
+        # Convert datas to torch tensors if they are numpy arrays
         self.Ts = [data.shape[0] for data in datas]
         self.initial_variance = initial_variance
+
+        # Ensure inputs, masks, and tags are converted to tensors if needed
+        if inputs is not None:
+            inputs = [torch.tensor(input) if isinstance(input, np.ndarray) else input for input in inputs]
+        if masks is not None:
+            masks = [torch.tensor(mask) if isinstance(mask, np.ndarray) else mask for mask in masks]
+        if tags is not None:
+            tags = [torch.tensor(tag) if isinstance(tag, np.ndarray) else tag for tag in tags]
 
         self._discrete_state_params = None
         self._discrete_expectations = None
@@ -281,7 +289,7 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         self._inferred_discrete_expectations = None
         self.discrete_state_params = \
             [self._initialize_discrete_state_params(data, input, mask, tag)
-             for data, input, mask, tag in zip(datas, inputs, masks, tags)]
+            for data, input, mask, tag in zip(datas, inputs, masks, tags)]
 
         self._continuous_state_params = None
         self._continuous_expectations = None
@@ -289,13 +297,15 @@ class SLDSStructuredMeanFieldVariationalPosterior(VariationalPosterior):
         self._inferred_continuous_expectations = None
 
         if xs is not None:
+            # Ensure xs are converted to tensors if needed
+            xs = [torch.tensor(x) if isinstance(x, np.ndarray) else x for x in xs]
             self.continuous_state_params = \
                 [self._initialize_continuous_state_params(data, x, input, mask, tag)
-                 for data, x, input, mask, tag in zip(datas, xs, inputs, masks, tags)]
+                for data, x, input, mask, tag in zip(datas, xs, inputs, masks, tags)]
         else:
             self.continuous_state_params = \
                 [self._initialize_continuous_state_params_random(data, input, mask, tag)
-                 for data, input, mask, tag in zip(datas, inputs, masks, tags)]
+                for data, input, mask, tag in zip(datas, inputs, masks, tags)]
 
     # Parameters
     @property

@@ -13,6 +13,7 @@ from mrmgp.kernel import SpectralKernelDynamics
 from utils import em_pcca, pcca_x
 import copy
 import warnings
+import torch
 
 class MRMGP(object):
     """
@@ -65,9 +66,9 @@ class MRMGP(object):
         
         # run PCCA to initialize the across latent variables
         y = torch.zeros((datas[0].shape[1], datas[0].shape[0], len(datas)))
-        for i in range(len(datas)):
-            y[:, :, i] = datas[i].T
-        y = torch.reshape(y, (y.shape[0], y.shape[1] * y.shape[2]), order="F")
+        for i, d in enumerate(datas):
+            y[:, :, i] = torch.from_numpy(d.T).float()
+        y = torch.reshape(y, (y.shape[0], y.shape[1] * y.shape[2]))
 
         C_across, C_within, d, Rs = em_pcca(
             y, self.num_times, self.num_groups, self.x_across, self.x_within, self.ydims)

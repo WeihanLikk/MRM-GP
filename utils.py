@@ -6,60 +6,58 @@ import scipy.linalg as sla
 from autograd.scipy.signal import convolve
 from scipy.linalg import block_diag
 from tqdm import trange
+import torch
+import scipy.linalg as sla
+from torch.linalg import inv, eig, cholesky, svd
+from torch import matmul, eye, ones, diag, cat, reshape, nonzero, sum, hstack, eye
 
 def factorial(n):
-    return anp.prod(range(1, n+1))
+    return torch.prod(torch.arange(1, n+1, dtype=torch.float32))
 
 def complex_taylor_coefficient(sigma, mu, num_taylor):
     coeffs = []
     if num_taylor == 2:
-        q = anp.sqrt(2*anp.pi/sigma) * 8 * anp.power(sigma, 2)
-        coeffs.append(anp.power(mu, 4) + 4*sigma *
-                      anp.power(mu, 2) + 8 * anp.power(sigma, 2))
-        coeffs.append((-1j)*(-4*anp.power(mu, 3)-8*mu*sigma))
-        coeffs.append((-1)*(6*anp.power(mu, 2) + 4*sigma))
-        coeffs.append((1j)*(-4*mu))
+        q = torch.sqrt(2 * torch.pi / sigma) * 8 * torch.pow(sigma, 2)
+        coeffs.append(torch.pow(mu, 4) + 4 * sigma * torch.pow(mu, 2) + 8 * torch.pow(sigma, 2))
+        coeffs.append((-1j) * (-4 * torch.pow(mu, 3) - 8 * mu * sigma))
+        coeffs.append((-1) * (6 * torch.pow(mu, 2) + 4 * sigma))
+        coeffs.append((1j) * (-4 * mu))
         
     elif num_taylor == 3:
-        q = anp.sqrt(2*anp.pi/sigma) * 48 * anp.power(sigma, 3)
-        coeffs.append(anp.power(mu, 6) + 6*sigma*anp.power(mu, 4) + 24 *
-                      anp.power(sigma, 2)*anp.power(mu, 2) + 48 * anp.power(sigma, 3))
-        coeffs.append((-1j)*(-6*anp.power(mu, 5)-24*sigma *
-                      anp.power(mu, 3)-48*anp.power(sigma, 2)*mu))
-        coeffs.append((-1.0)*(15*anp.power(mu, 4)+36*sigma *
-                      anp.power(mu, 2)+24*anp.power(sigma, 2)))
-        coeffs.append((1j)*(-20*anp.power(mu, 3)-24*sigma*mu))
-        coeffs.append((1.0)*15*anp.power(mu, 2)+6*sigma)
-        coeffs.append((-1j)*(-6*mu))
+        q = torch.sqrt(2 * torch.pi / sigma) * 48 * torch.pow(sigma, 3)
+        coeffs.append(torch.pow(mu, 6) + 6 * sigma * torch.pow(mu, 4) + 24 * torch.pow(sigma, 2) * torch.pow(mu, 2) + 48 * torch.pow(sigma, 3))
+        coeffs.append((-1j) * (-6 * torch.pow(mu, 5) - 24 * sigma * torch.pow(mu, 3) - 48 * torch.pow(sigma, 2) * mu))
+        coeffs.append((-1.0) * (15 * torch.pow(mu, 4) + 36 * sigma * torch.pow(mu, 2) + 24 * torch.pow(sigma, 2)))
+        coeffs.append((1j) * (-20 * torch.pow(mu, 3) - 24 * sigma * mu))
+        coeffs.append((1.0) * 15 * torch.pow(mu, 2) + 6 * sigma)
+        coeffs.append((-1j) * (-6 * mu))
     elif num_taylor == 4:
-        q = anp.sqrt(2*anp.pi/sigma) * 384 * anp.power(sigma, 4)
-        coeffs.append(anp.power(mu, 8)+8*sigma*anp.power(mu, 6)+48*anp.power(sigma, 2)*anp.power(mu, 4) +
-                      192*anp.power(sigma, 3)*anp.power(mu, 2)+384*anp.power(sigma, 4))
-        coeffs.append((-1j)*(-8*anp.power(mu, 7)-48*sigma*anp.power(mu, 5) -
-                             192*anp.power(sigma, 2)*anp.power(mu, 3)-384*anp.power(sigma, 3)*mu))
-        coeffs.append((-1.0)*(28*anp.power(mu, 6)+120*sigma*anp.power(mu, 4) +
-                              288*anp.power(sigma, 2)*anp.power(mu, 2)+192*anp.power(sigma, 3)))
-        coeffs.append((1j)*(-56*anp.power(mu, 5)-160*sigma *
-                      anp.power(mu, 3)-192*anp.power(sigma, 2)*mu))
-        coeffs.append((1.0)*(70*anp.power(mu, 4)+120*sigma *
-                      anp.power(mu, 2)+48*anp.power(sigma, 2)))
-        coeffs.append((-1j)*(-56*anp.power(mu, 3)-48*sigma*mu))
-        coeffs.append((-1.0)*(28*anp.power(mu, 2)+8*sigma))
-        coeffs.append((1j)*(-8*mu))
+        q = torch.sqrt(2 * torch.pi / sigma) * 384 * torch.pow(sigma, 4)
+        coeffs.append(torch.pow(mu, 8) + 8 * sigma * torch.pow(mu, 6) + 48 * torch.pow(sigma, 2) * torch.pow(mu, 4) +
+                      192 * torch.pow(sigma, 3) * torch.pow(mu, 2) + 384 * torch.pow(sigma, 4))
+        coeffs.append((-1j) * (-8 * torch.pow(mu, 7) - 48 * sigma * torch.pow(mu, 5) -
+                             192 * torch.pow(sigma, 2) * torch.pow(mu, 3) - 384 * torch.pow(sigma, 3) * mu))
+        coeffs.append((-1.0) * (28 * torch.pow(mu, 6) + 120 * sigma * torch.pow(mu, 4) +
+                              288 * torch.pow(sigma, 2) * torch.pow(mu, 2) + 192 * torch.pow(sigma, 3)))
+        coeffs.append((1j) * (-56 * torch.pow(mu, 5) - 160 * sigma * torch.pow(mu, 3) - 192 * torch.pow(sigma, 2) * mu))
+        coeffs.append((1.0) * (70 * torch.pow(mu, 4) + 120 * sigma * torch.pow(mu, 2) + 48 * torch.pow(sigma, 2)))
+        coeffs.append((-1j) * (-56 * torch.pow(mu, 3) - 48 * sigma * mu))
+        coeffs.append((-1.0) * (28 * torch.pow(mu, 2) + 8 * sigma))
+        coeffs.append((1j) * (-8 * mu))
     else:
         raise NotImplementedError
 
-    return anp.array(coeffs), q
+    return torch.tensor(coeffs, dtype=torch.complex64), q
 
 def complex_approximation(sigma, mu, num_taylor):
     coeffs, q = complex_taylor_coefficient(sigma, mu, num_taylor)
 
-    first_value = 1.0 if anp.mod(num_taylor, 2) == 0 else -1.0
+    first_value = 1.0 if num_taylor % 2 == 0 else -1.0
 
-    p = anp.append([first_value], coeffs[::-1])
+    p = torch.cat([torch.tensor([first_value]), coeffs.flip(0)])
 
-    root = myroots(p)
-    p_negative = mypoly(root[anp.where(anp.real(root) < 0)])
+    root = myroots(p)  # Assuming myroots is implemented
+    p_negative = mypoly(root[torch.where(torch.real(root) < 0)])
 
     return p_negative, q, root
 
@@ -67,15 +65,13 @@ def square_exp_approximation(sigma, mu, num_taylor):
     fn = factorial(num_taylor)
     coeffs = []
     for i in range(0, num_taylor):
-        coeffs.append(fn * anp.power((2 * sigma), num_taylor-i)
-                      * anp.power(-1, i) / factorial(i))
+        coeffs.append(fn * torch.pow((2 * sigma), num_taylor - i) * torch.pow(-1, i) / factorial(i))
         coeffs.append(0.0)
-    first_value = 1.0 if anp.mod(num_taylor, 2) == 0 else -1.0
-    p = anp.append([first_value], coeffs[::-1])
-    root = myroots(p)
-    p_negative = mypoly(root[anp.where(anp.real(root) < 0)])
-    q = anp.sqrt(2*anp.pi/sigma) * factorial(num_taylor) * \
-        anp.power(2 * sigma, num_taylor)    
+    first_value = 1.0 if num_taylor % 2 == 0 else -1.0
+    p = torch.cat([torch.tensor([first_value]), coeffs[::-1]])
+    root = myroots(p)  # Assuming myroots is implemented
+    p_negative = mypoly(root[torch.where(torch.real(root) < 0)])
+    q = torch.sqrt(2 * torch.pi / sigma) * factorial(num_taylor) * torch.pow(2 * sigma, num_taylor)    
 
     return p_negative, q
 
@@ -94,7 +90,7 @@ def create_block_mask(group_dims):
     num_groups = len(group_dims)
     blocks = []
     for i in range(num_groups):
-        blocks.append(np.ones((group_dims[i], group_dims[i])))
+        blocks.append(torch.ones((group_dims[i], group_dims[i])))
     block_mask = block_diag(*blocks)
     return block_mask
 
@@ -103,56 +99,58 @@ def mat2blocks(A, block_idx):
     blocks = []
     for i in range(num_blocks):
         curr_block = block_idx[i]
-        idx = np.array(range(curr_block[0], curr_block[1]))
-        blocks.append(A[np.ix_(idx, idx)])
+        idx = torch.arange(curr_block[0], curr_block[1])
+        blocks.append(A[idx[:, None], idx[None, :]])
     return blocks
 
 def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tolLL=1e-5):
-    ydim = np.sum(ydims)
+    ydim = torch.sum(torch.tensor(ydims))
 
     block_idxs = get_block_idxs(ydims)
     block_mask = create_block_mask(ydims)
 
-    cY = np.cov(y)
-    if np.linalg.matrix_rank(cY) == ydim:
-        scale = np.exp(
-            2 * np.sum(np.log(np.diag(np.linalg.cholesky(cY))))/ydim)
+    cY = torch.cov(y)
+    if torch.linalg.matrix_rank(cY) == ydim:
+        scale = torch.exp(2 * torch.sum(torch.log(torch.diagonal(torch.linalg.cholesky(cY)))) / ydim)
     else:
-        r = np.linalg.matrix_rank(cY)
-        e, _ = np.linalg.eig(cY)
-        s = -np.sort(-e)
-        s = s[0:r]
-        scale = s.prod()**(1.0/len(s))
+        r = torch.linalg.matrix_rank(cY)
+        e, _ = torch.linalg.eig(cY)
+        s = -torch.sort(-e).values
+        s = s[:r]
+        scale = torch.prod(s)**(1.0 / len(s))
 
-    C = np.random.randn(int(ydim), int(xdim_across)) * \
-        np.sqrt(scale / xdim_across)
+    C = torch.randn(int(ydim), int(xdim_across)) * torch.sqrt(scale / xdim_across)
 
     Rs = []
     for i in range(num_groups):
-        y_i = y[int(np.sum(ydims[0:i])): int(np.sum(ydims[0:i+1])), :]
-        Rs.append(np.cov(y_i))
+        y_i = y[int(torch.sum(torch.tensor(ydims[0:i]))): int(torch.sum(torch.tensor(ydims[0:i+1]))), :]
+        Rs.append(torch.cov(y_i))
     R = block_diag(*Rs)
-    d = np.mean(y, axis=1)
+    d = torch.mean(y, axis=1)
 
-    I = np.eye(xdim_across)
-    const = (-ydim / 2) * np.log(2 * np.pi)
+    I = torch.eye(xdim_across)
+    const = (-ydim / 2) * torch.log(2 * torch.tensor(torch.pi))
 
     LLi = 0
     LL = []
-    LLold = -np.inf
+    LLold = -torch.inf
     print("Initialize by fitting pcca")
-    max_ll = -np.inf
+    max_ll = -torch.inf
     max_C = None
     max_Rs = None
-    for i in trange(int(maxIters)):
+    for i in range(int(maxIters)):
         iRs = []
         for j in range(num_groups):
-            iRs.append(np.linalg.inv(Rs[j]))
+            if torch.linalg.cond(Rs[j]) > 1e5:  # A very large condition number indicates singularity
+                # Add small regularization to Rs[j] if it's singular
+                Rs[j] = Rs[j] + 1e-3 * torch.eye(Rs[j].shape[0], device=Rs[j].device)
+            # Compute the inverse or pseudoinverse
+            iRs.append(torch.linalg.pinv(Rs[j]))
         iR = block_diag(*iRs)
         iR = 0.5 * (iR + iR.T)
         iRC = iR @ C
 
-        MM = iR - iRC @ np.linalg.pinv(I + C.T @ iRC) @ iRC.T
+        MM = iR - iRC @ torch.linalg.pinv(I + C.T @ iRC) @ iRC.T
 
         beta = C.T @ MM
 
@@ -160,29 +158,33 @@ def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tol
         Exx = I - beta @ C + beta @ cY_beta
 
         # calculate LL
-        ldM = np.sum(np.log(np.diag(np.linalg.cholesky(MM+1e-3*np.eye(MM.shape[0])))))
+        regularization = 1e-3
+        MM_reg = MM + regularization * torch.eye(MM.shape[0], device=MM.device)
+
+        # Use SVD for a more numerically stable calculation of the log determinant
+        u, s, v = torch.svd(MM_reg)
+        ldM = torch.sum(torch.log(s))
 
         if LLi != 0:
             LLold = LLi
-        LLi = T * const + T * ldM - 0.5 * T * np.sum(MM * cY)
+        LLi = T * const + T * ldM - 0.5 * T * torch.sum(MM * cY)
         LL.append(LLi)
 
-        C = np.linalg.lstsq(Exx.T, cY_beta.T,rcond=None)[0].T
+        C = torch.linalg.lstsq(Exx.T, cY_beta.T)[0].T
 
         R = cY - cY_beta @ C.T
         R = 0.5 * (R + R.T)
         R = R * block_mask
-        R = np.real(R)
+        R = torch.real(R)
         Rs = mat2blocks(R, block_idxs)
 
-        if not np.isnan(LLi):
+        if not torch.isnan(LLi):
             if LLi > max_ll:
                 max_ll = LLi
                 max_C = C
                 max_Rs = Rs
 
     C_across = []
-    # ds = []
     for i in range(num_groups):
         cur_group = block_idxs[i]
         C_across.append(max_C[cur_group[0]:cur_group[1], :])
@@ -191,85 +193,100 @@ def em_pcca(y, T, num_groups, xdim_across, xdim_within, ydims, maxIters=1e3, tol
     C_within = []
     if xdim_within[0] != 0:
         for i in range(num_groups):
-            y_i = y[int(np.sum(ydims[0:i])): int(np.sum(ydims[0:i+1])), :]
+            y_i = y[int(torch.sum(torch.tensor(ydims[0:i]))): int(torch.sum(torch.tensor(ydims[0:i+1]))), :]
             C_i = C_across[i]
-            covY = np.cov(y_i)
-            _, _, C_uncorr = np.linalg.svd(C_i.T @ covY)
+            covY = torch.cov(y_i)
+            _, _, C_uncorr = torch.svd(C_i.T @ covY)
             C_uncorr = C_uncorr[:, xdim_across:xdim_across + xdim_within[i]]
             C_within.append(C_uncorr)
 
     return C_across, C_within, d, Rs
 
-
 def pcca_x(y, T, num_groups, xdim_across, xdim_within, ydims, num_trials, C_across, C_within, Rs, d):
-    ydim = np.sum(ydims)
+    ydim = torch.sum(torch.tensor(ydims))
 
-    C = np.concatenate(C_across, axis=0)
+    C = cat(C_across, dim=0)
 
-    y = np.reshape(y, (ydim, T, num_trials), order="F")
-    x_latents_across = np.zeros((xdim_across, T, num_trials))
+    y = reshape(y, (ydim, T, num_trials))
+    x_latents_across = torch.zeros((xdim_across, T, num_trials))
+    
     for i in range(num_trials):
-        y0 = y[:, :, i] - np.tile(d[:, None], T)
-        I = np.eye(xdim_across)
+        y0 = y[:, :, i] - d[:, None].expand(-1, T)
+        I = eye(xdim_across)
 
         iRs = []
         for j in range(num_groups):
-            iRs.append(np.linalg.inv(Rs[j]))
+            if torch.linalg.cond(Rs[j]) > 1e5:  # A very large condition number indicates singularity
+                # Add small regularization to Rs[j] if it's singular
+                Rs[j] = Rs[j] + 1e-3 * torch.eye(Rs[j].shape[0], device=Rs[j].device)
+            # Compute the inverse or pseudoinverse
+            iRs.append(torch.linalg.pinv(Rs[j]))
         iR = block_diag(*iRs)
         iR = 0.5 * (iR + iR.T)
-        iRC = iR @ C
-        MM = iR - iRC @ np.linalg.inv(I + C.T @ iRC) @ iRC.T
+        iRC = matmul(iR, C)
+        MM = iR - matmul(iRC, inv(I + matmul(C.T, iRC))) @ iRC.T
 
-        beta = C.T @ MM
+        beta = matmul(C.T, MM)
 
-        x_latents_across[:, :, i] = beta @ y0
+        x_latents_across[:, :, i] = matmul(beta, y0)
 
     x_latents = []
     if xdim_within[0] != 0:
         for i in range(num_groups):
             C_uncorr = C_within[i]
-            y_i = y[int(np.sum(ydims[0:i])): int(np.sum(ydims[0:i+1])), :, :]
-            y_i = np.reshape(y_i, (y_i.shape[0], T, num_trials), order="F")
-            x_latents_within = np.zeros((xdim_within[i], T, num_trials))
+            y_i = y[int(torch.sum(torch.tensor(ydims[0:i]))): int(torch.sum(torch.tensor(ydims[0:i+1]))), :, :]
+            y_i = reshape(y_i, (y_i.shape[0], T, num_trials))
+            x_latents_within = torch.zeros((xdim_within[i], T, num_trials))
             for j in range(num_trials):
-                d = np.expand_dims(np.mean(y_i[:, :, j], axis=1), axis=1)
-                y0 = y_i[:, :, j] - np.tile(d, T)
-                I = np.eye(xdim_within[i])
+                d_i = torch.mean(y_i[:, :, j], axis=1, keepdim=True)
+                y0 = y_i[:, :, j] - d_i.expand(-1, T)
+                I = eye(xdim_within[i])
 
-                iR = np.linalg.inv(Rs[i])
+                iR = inv(Rs[i])
                 iR = 0.5 * (iR + iR.T)
-                iRC = iR @ C_uncorr
-                MM = iR - iRC @ np.linalg.inv(I + C_uncorr.T @ iRC) @ iRC.T
+                iRC = matmul(iR, C_uncorr)
+                # Ensure the dimensions of the identity matrix I match the expected size
+                I = eye(C_uncorr.shape[1], device=y.device)  # Identity matrix of shape (q, q)
 
-                beta = C_uncorr.T @ MM
-                x_latents_within[:, :, j] = beta @ y0
-            x_latents.append(np.concatenate(
-                (x_latents_across, x_latents_within), axis=0))
-        x_latents = np.concatenate(x_latents, axis=0)
+                # Compute the intermediate result, ensuring compatible shapes
+                iRC = matmul(iR, C_uncorr)  # iRC should have shape (n, q)
+
+                # Ensure matmul(C_uncorr.T, iRC) results in a matrix of shape (q, q)
+                # Regularize the matrix and compute the inverse term
+                regularization = 1e-3
+                regularized_matrix = I + matmul(C_uncorr.T, iRC) + regularization * torch.eye(C_uncorr.shape[1], device=y.device)
+
+                # Ensure this matrix is invertible, and compute the inverse term
+                inv_term = inv(regularized_matrix)
+
+                # Compute MM using the inverse term
+                MM = iR - matmul(iRC, matmul(inv_term, iRC.T))
+
+
+                beta = matmul(C_uncorr.T, MM)
+                x_latents_within[:, :, j] = matmul(beta, y0)
+            x_latents.append(cat((x_latents_across, x_latents_within), dim=0))
+        x_latents = cat(x_latents, dim=0)
 
         return x_latents, x_latents_across
     else:
         return x_latents_across, x_latents_across
 
 
-@primitive
 def myexpm(x):
     return sla.expm(x)
-
 
 def myexpm_vjp(g, ans, x):
     return sla.expm_frechet(x.T, g, compute_expm=False)
 
 
-defvjp(myexpm, lambda ans, x: lambda g: myexpm_vjp(g, ans, x))
-
 def myroots(p):
     # find non-zero array entries
-    non_zero = anp.nonzero(anp.ravel(p))[0]
+    non_zero = nonzero(torch.ravel(p))[0]
 
     # Return an empty array if polynomial is all zeros
     if len(non_zero) == 0:
-        return anp.array([])
+        return torch.tensor([])
 
     # find the number of trailing zeros -- this is the number of roots at 0.
     trailing_zeros = len(p) - non_zero[-1] - 1
@@ -278,22 +295,21 @@ def myroots(p):
     p = p[int(non_zero[0]):int(non_zero[-1])+1]
 
     # casting: if incoming array isn't floating point, make it floating point.
-    if not issubclass(p.dtype.type, (anp.floating, anp.complexfloating)):
-        p = p.astype(float)
+    if not torch.is_floating_point(p):
+        p = p.float()
 
     N = len(p)
     if N > 1:
         # build companion matrix and find its eigenvalues (the roots)
-        A = anp.diag(anp.ones((N-2,), p.dtype), -1)
-        # A[0,:] = -p[1:] / p[0]
+        A = torch.diag(torch.ones((N-2,), p.dtype), -1)
         first_row = -p[1:] / p[0]
-        A = anp.vstack((first_row[None, :], A[1:, :]))
-        roots, _ = anp.linalg.eig(A)
+        A = torch.vstack((first_row[None, :], A[1:, :]))
+        roots, _ = eig(A)
     else:
-        roots = anp.array([])
+        roots = torch.tensor([])
 
     # tack any zeros onto the back of the array
-    roots = anp.hstack((roots, anp.zeros(trailing_zeros, roots.dtype)))
+    roots = hstack((roots, torch.zeros(trailing_zeros, roots.dtype)))
     return roots
 
 
@@ -301,62 +317,64 @@ def mypoly(roots):
     sh = roots.shape
 
     if len(sh) == 2 and sh[0] == sh[1] and sh[0] != 0:
-        roots, _ = anp.linalg.eig(roots)
+        roots, _ = eig(roots)
     elif len(sh) == 1:
         dt = roots.dtype
         if dt != object:
-            roots = roots.astype(anp.mintypecode(dt.char))
+            roots = roots.to(torch.mintypecode(dt.char))
     else:
         raise ValueError("input must be 1d or non-empty square 2d array.")
 
     if len(roots) == 0:
         return 1.0
     dt = roots.dtype
-    a = anp.ones((1,), dtype=dt)
+    a = torch.ones((1,), dtype=dt)
     for root in roots:
-        a = convolve(a, anp.array([1, -root], dtype=dt), mode='full')
+        a = torch.conv1d(a, torch.tensor([1, -root], dtype=dt), padding='same')
 
     return a
+
 
 def block_diag(*arrs):
     acc = arrs[0]
     for a in arrs[1:]:
         _, c = a.shape
-        a = anp.pad(a, ((0, 0), (acc.shape[-1], 0)),
-                    'constant', constant_values=0.0)
-        acc = anp.pad(acc, ((0, 0), (0, c)), 'constant', constant_values=0.0)
-        acc = anp.concatenate((acc, a), axis=0)
+        a = torch.nn.functional.pad(a, (0, acc.shape[1]), "constant", value=0.0)
+        acc = torch.nn.functional.pad(acc, (0, c), "constant", value=0.0)
+        acc = torch.cat((acc, a), dim=0)
     return acc
 
 
 def softplus(x, beta=1.0):
-    if type(x) == list:
-        return [1.0/beta * anp.log(1 + anp.exp(beta * xi)) for xi in x]
+    if isinstance(x, list):
+        return [1.0/beta * torch.log(1 + torch.exp(beta * xi)) for xi in x]
     else:
-        return 1.0/beta * anp.log(1 + anp.exp(beta * x))
+        return 1.0/beta * torch.log(1 + torch.exp(beta * x))
 
 
 def reverse_softplus(x, beta=1.0):
-    if type(x) == list:
-        return [1.0/beta * anp.log(-1 + anp.exp(beta * xi)) for xi in x]
+    if isinstance(x, list):
+        return [1.0/beta * torch.log(-1 + torch.exp(beta * xi)) for xi in x]
     else:
-        return 1.0/beta * anp.log(-1 + anp.exp(beta * x))
+        return 1.0/beta * torch.log(-1 + torch.exp(beta * x))
 
 
 def svdsolve(A):
-    u, s, v = anp.linalg.svd(A)
-    Ainv = anp.dot(v.transpose(), anp.dot(anp.diag(s**-1), u.transpose()))
+    u, s, v = svd(A)
+    Ainv = matmul(v.T, matmul(diag(s**-1), u.T))
     return Ainv
 
 
 def min_max_normalize(x, axis=0):
-    return 2*(x - anp.min(x, axis)) / (anp.max(x, axis) - anp.min(x, axis)) - 1
+    return 2 * (x - torch.min(x, axis)) / (torch.max(x, axis) - torch.min(x, axis)) - 1
 
 
 def inv_cholesky(x):
-    L = anp.linalg.cholesky(x)
-    inv_L = anp.linalg.inv(L)
-    return inv_L.T @ inv_L
+    L = cholesky(x)
+    inv_L = inv(L)
+    return matmul(inv_L.T, inv_L)
+
 
 def check_symmetric(a, rtol=1e-05, atol=1e-08):
-    return anp.allclose(a, a.T, rtol=rtol, atol=atol)
+    return torch.allclose(a, a.T, rtol=rtol, atol=atol)
+
