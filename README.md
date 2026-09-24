@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> **A newer and more efficient implementation is now available at [MBRILA](https://github.com/BRAINML-GT/MBRILA).**
+> MBRILA is a GPU-native PyTorch library for multi-region neural latent variable models. It builds on our follow-up work ([Li et al., ICML 2025](https://proceedings.mlr.press/v267/li25ck.html)), which supports time-varying inter-region delays with O(log T) parallel inference, and it also includes DLAG, mDLAG, GPFA and more under a unified interface. We recommend using MBRILA for new projects; this repository is kept for reproducing the ICML 2024 results.
+
 ## [ICML 2024] Multi-Region Markovian Gaussian Process: An Efficient Method to Discover Directional Communications Across Multiple Brain Regions 
 
 <div align='center' >Weihan Li, Chengrui Li, Yule Wang, and Anqi Wu</div> 
